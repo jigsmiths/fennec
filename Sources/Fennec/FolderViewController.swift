@@ -37,6 +37,7 @@ final class FolderViewController: NSViewController {
     private var allEntries: [FileEntry] = []
     private var rows: [FileEntry] = []
     private var loadTask: Task<Void, Never>?
+    private var loadingURL: URL?
     private var watcher: DirectoryWatcher?
 
     private static let viewModeKey = "viewMode"
@@ -143,6 +144,8 @@ final class FolderViewController: NSViewController {
         let started = ContinuousClock.now
         let showHidden = showHidden
         let order = sortOrder
+        loadingURL = url
+        if !keepScroll { showLoadingIfSlow(url) }
 
         loadTask = Task { [weak self] in
             let result: Result<([FileEntry], [FileEntry]), Error>
@@ -155,6 +158,7 @@ final class FolderViewController: NSViewController {
                 result = .failure(error)
             }
             guard let self, !Task.isCancelled, self.directory == url else { return }
+            self.loadingURL = nil
             let loaded = ContinuousClock.now
 
             switch result {
@@ -177,6 +181,19 @@ final class FolderViewController: NSViewController {
                     self.reload()
                 }
             }
+        }
+    }
+
+    /// A folder can take a while (a macOS permission prompt, a slow share). Rather than keep showing the
+    /// previous folder's files under the new path, clear the view if loading takes longer than a blink.
+    private func showLoadingIfSlow(_ url: URL) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard let self, self.loadingURL == url else { return }
+            self.rows = []
+            self.content.display([], selecting: IndexSet(), keepScroll: false)
+            self.onSelectionChange?([])
+            self.showMessage("Loading…")
         }
     }
 

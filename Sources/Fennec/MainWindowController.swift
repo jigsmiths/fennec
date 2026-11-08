@@ -23,6 +23,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private static let viewModeID = NSToolbarItem.Identifier("viewMode")
     private static let previewToggleID = NSToolbarItem.Identifier("previewToggle")
     private static let previewVisibleKey = "previewVisible"
+    private static let previewWidthSetKey = "previewWidthSet"
 
     init(start: URL) {
         history = NavigationHistory(start: start)
@@ -70,6 +71,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    // The split view restores its saved divider positions when the window appears, so set the default after that.
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        applyDefaultPreviewWidth()
+    }
 
     // MARK: Navigation
 
@@ -135,9 +142,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     @objc func togglePreview(_ sender: Any?) {
         let show = previewItem.isCollapsed
-        previewItem.animator().isCollapsed = !show
         UserDefaults.standard.set(show, forKey: Self.previewVisibleKey)
+        if show, !UserDefaults.standard.bool(forKey: Self.previewWidthSetKey) {
+            // Not animated: the divider can't be positioned while the pane is still sliding in.
+            previewItem.isCollapsed = false
+            applyDefaultPreviewWidth()
+        } else {
+            previewItem.animator().isCollapsed = !show
+        }
         if show { preview.show(folder.selectedEntries) }
+    }
+
+    /// Opens the pane at 300pt the first time; after that the split view's autosave keeps the user's width.
+    private func applyDefaultPreviewWidth() {
+        guard !previewItem.isCollapsed, !UserDefaults.standard.bool(forKey: Self.previewWidthSetKey) else { return }
+        let splitView = splitController.splitView
+        splitView.layoutSubtreeIfNeeded()
+        splitView.setPosition(splitView.bounds.width - 300 - splitView.dividerThickness, ofDividerAt: 1)
+        UserDefaults.standard.set(true, forKey: Self.previewWidthSetKey)
     }
 
     private func selectionChanged(_ entries: [FileEntry]) {

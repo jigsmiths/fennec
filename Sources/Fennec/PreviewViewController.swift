@@ -30,11 +30,7 @@ final class PreviewViewController: NSViewController {
 
         let container = NSView()
         container.addSubview(stack)
-        // Starting width for the pane; the split view's autosave keeps the user's width after that.
-        let preferredWidth = container.widthAnchor.constraint(equalToConstant: 300)
-        preferredWidth.priority = .defaultLow
         NSLayoutConstraint.activate([
-            preferredWidth,
             stack.topAnchor.constraint(equalTo: container.safeAreaLayoutGuide.topAnchor, constant: 12),
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
             stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),

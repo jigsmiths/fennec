@@ -11,12 +11,6 @@ public enum DirectoryLoader {
         .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey,
     ]
 
-    public static func load(_ directory: URL) async throws -> [FileEntry] {
-        try await Task.detached(priority: .userInitiated) {
-            try loadSync(directory)
-        }.value
-    }
-
     public static func loadSync(_ directory: URL) throws -> [FileEntry] {
         let inCloud = isInICloud(directory)
         let keys = inCloud ? baseKeys + cloudKeys : baseKeys

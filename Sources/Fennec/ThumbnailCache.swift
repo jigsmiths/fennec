@@ -14,12 +14,16 @@ final class ThumbnailCache {
         cache.countLimit = 2000
     }
 
-    func thumbnail(for entry: FileEntry, size: CGFloat, completion: @escaping @MainActor @Sendable (NSImage) -> Void) {
-        guard Self.wantsThumbnail(entry) else { return }
+    /// Returns the pending request, if one was started, so a reused grid tile can cancel it.
+    @discardableResult
+    func thumbnail(
+        for entry: FileEntry, size: CGFloat, completion: @escaping @MainActor @Sendable (NSImage) -> Void
+    ) -> QLThumbnailGenerator.Request? {
+        guard Self.wantsThumbnail(entry) else { return nil }
         let key = "\(entry.path)|\(entry.modified?.timeIntervalSince1970 ?? 0)|\(Int(size))"
         if let cached = cache.object(forKey: key as NSString) {
             completion(cached)
-            return
+            return nil
         }
 
         let request = QLThumbnailGenerator.Request(
@@ -33,6 +37,11 @@ final class ThumbnailCache {
                 completion(image)
             }
         }
+        return request
+    }
+
+    func cancel(_ request: QLThumbnailGenerator.Request) {
+        QLThumbnailGenerator.shared.cancel(request)
     }
 
     // Cloud-only files are skipped: generating a thumbnail would download them.

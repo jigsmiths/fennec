@@ -28,6 +28,7 @@ bench count="50000": bundle
     dir="$(mktemp -d "${TMPDIR:-/tmp}/fennec-bench.XXXXXX")"
     trap 'rm -rf "$dir"' EXIT
     (cd "$dir" && seq -f "file-%06g.txt" 1 {{count}} | xargs touch)
+    # Fixed view settings (argument-domain defaults) so results don't depend on how the app was last left.
     for i in 1 2 3; do
-        FENNEC_BENCH=1 {{app}}/Contents/MacOS/Fennec "$dir"
+        FENNEC_BENCH=1 {{app}}/Contents/MacOS/Fennec "$dir" -viewMode list -previewVisible NO
     done

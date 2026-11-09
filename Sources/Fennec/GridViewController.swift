@@ -1,5 +1,6 @@
 import AppKit
 import FennecCore
+import QuickLookThumbnailing
 
 final class GridCollectionView: NSCollectionView {
     var onOpen: (() -> Void)?
@@ -61,15 +62,18 @@ final class GridViewController: NSViewController, FolderContentView, NSCollectio
 
     func display(_ newRows: [FileEntry], selecting indexes: IndexSet, keepScroll: Bool) {
         loadViewIfNeeded()
-        let scrollOrigin = scrollView.contentView.bounds.origin
-        rows = newRows
-        collectionView.reloadData()
         let paths = Set(indexes.map { IndexPath(item: $0, section: 0) })
-        collectionView.selectionIndexPaths = paths
-
+        let update = {
+            self.rows = newRows
+            self.collectionView.reloadData()
+            self.collectionView.selectionIndexPaths = paths
+        }
         if keepScroll {
-            scrollView.contentView.scroll(to: scrollOrigin)
-        } else if let first = paths.min() {
+            scrollView.keepingScrollPosition(update)
+            return
+        }
+        update()
+        if let first = paths.min() {
             collectionView.scrollToItems(at: [first], scrollPosition: .nearestHorizontalEdge)
         } else {
             // The top sits above zero by the toolbar's content inset, so scroll to the top edge, not .zero.
@@ -117,6 +121,7 @@ final class GridItem: NSCollectionViewItem {
     private let icon = NSImageView()
     private let label = NSTextField(wrappingLabelWithString: "")
     private var path: String?
+    private var thumbnailRequest: QLThumbnailGenerator.Request?
 
     override func loadView() {
         let container = NSView()
@@ -152,17 +157,30 @@ final class GridItem: NSCollectionViewItem {
         didSet { updateSelection() }
     }
 
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        cancelThumbnail()
+    }
+
     func configure(_ entry: FileEntry) {
+        cancelThumbnail()
         path = entry.path
         icon.image = FileDisplay.icon(for: entry)
         label.stringValue = entry.name
         view.alphaValue = entry.isHidden ? 0.55 : 1
         updateSelection()
 
-        ThumbnailCache.shared.thumbnail(for: entry, size: Self.iconSize) { [weak self] image in
+        thumbnailRequest = ThumbnailCache.shared.thumbnail(for: entry, size: Self.iconSize) { [weak self] image in
             guard let self, self.path == entry.path else { return }
             self.icon.image = image
+            self.thumbnailRequest = nil
         }
+    }
+
+    // A reused tile's old request would otherwise keep running and hold up the tiles on screen.
+    private func cancelThumbnail() {
+        if let thumbnailRequest { ThumbnailCache.shared.cancel(thumbnailRequest) }
+        thumbnailRequest = nil
     }
 
     private func updateSelection() {

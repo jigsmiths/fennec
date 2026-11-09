@@ -25,7 +25,7 @@ public enum Sorting {
     // compared as precomputed lowercase UTF-8 bytes and kinds as integer ranks.
     public static func sorted(_ entries: [FileEntry], by order: SortOrder) -> [FileEntry] {
         let names = entries.map { Array($0.name.lowercased().utf8) }
-        let kindRanks = order.key == .kind ? ranks(entries.map { $0.typeIdentifier ?? "" }) : []
+        let kindRanks = order.key == .kind ? kindLabelRanks(entries) : []
 
         var indices = Array(entries.indices)
         indices.sort { i, j in
@@ -42,10 +42,6 @@ public enum Sorting {
             return order.ascending ? result == .orderedAscending : result == .orderedDescending
         }
         return indices.map { entries[$0] }
-    }
-
-    public static func compareNames(_ a: String, _ b: String) -> ComparisonResult {
-        naturalCompare(Array(a.lowercased().utf8), Array(b.lowercased().utf8))
     }
 
     /// Byte-wise compare where digit runs compare by numeric value ("file2" < "file10").
@@ -84,9 +80,19 @@ public enum Sorting {
         byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "9")
     }
 
-    private static func ranks(_ values: [String]) -> [Int] {
-        let order = Dictionary(uniqueKeysWithValues: Set(values).sorted().enumerated().map { ($1, $0) })
-        return values.map { order[$0]! }
+    /// Ranks each entry by the Kind label the column shows, computing each distinct type's label once.
+    private static func kindLabelRanks(_ entries: [FileEntry]) -> [Int] {
+        var labelsByType: [String: String] = [:]
+        let labels = entries.map { entry in
+            let type = entry.isBrowsable ? "folder" : (entry.typeIdentifier ?? "ext:\(entry.url.pathExtension)")
+            if let label = labelsByType[type] { return label }
+            let label = FileFormatting.kind(for: entry)
+            labelsByType[type] = label
+            return label
+        }
+        let sorted = Set(labels).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        let rankByLabel = Dictionary(uniqueKeysWithValues: sorted.enumerated().map { ($1, $0) })
+        return labels.map { rankByLabel[$0]! }
     }
 
     private static func ordered<T: Comparable>(_ a: T, _ b: T) -> ComparisonResult {

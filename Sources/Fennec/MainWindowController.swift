@@ -120,7 +120,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     @objc func toggleHiddenFiles(_ sender: Any?) {
         folder.showHidden.toggle()
-        preview.showHidden = folder.showHidden
     }
 
     @objc func showAsList(_ sender: Any?) {
@@ -150,7 +149,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         } else {
             previewItem.animator().isCollapsed = !show
         }
-        if show { preview.show(folder.selectedEntries) }
+        if show { preview.show(folder.selectedEntries, includeHidden: folder.showHidden) }
     }
 
     /// Opens the pane at 300pt the first time; after that the split view's autosave keeps the user's width.
@@ -163,7 +162,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     private func selectionChanged(_ entries: [FileEntry]) {
-        if !previewItem.isCollapsed { preview.show(entries) }
+        if !previewItem.isCollapsed { preview.show(entries, includeHidden: folder.showHidden) }
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible {
             QLPreviewPanel.shared().reloadData()
         }

@@ -41,10 +41,6 @@ enum FileDisplay {
         return kind
     }
 
-    static func size(for entry: FileEntry) -> String {
-        FileFormatting.size(for: entry)
-    }
-
     static func date(_ date: Date?) -> String {
         date.map(dateFormatter.string(from:)) ?? ""
     }

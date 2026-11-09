@@ -18,6 +18,16 @@ protocol FolderContentView: NSViewController {
     func handleKey(_ event: NSEvent)
 }
 
+extension NSScrollView {
+    /// Runs `update`, then puts the scroll position back where it was.
+    func keepingScrollPosition(_ update: () -> Void) {
+        let origin = contentView.bounds.origin
+        update()
+        contentView.scroll(to: origin)
+        reflectScrolledClipView(contentView)
+    }
+}
+
 /// Loads, watches, sorts and filters one folder, and shows it in the current view mode.
 @MainActor
 final class FolderViewController: NSViewController {
@@ -30,20 +40,27 @@ final class FolderViewController: NSViewController {
     }
 
     private(set) var viewMode: ViewMode
-    private var sortOrder = FennecCore.SortOrder()
+    private var sortOrder: FennecCore.SortOrder
     private var content: FolderContentView
     private let messageLabel = NSTextField(labelWithString: "")
     private var directory: URL?
     private var allEntries: [FileEntry] = []
     private var rows: [FileEntry] = []
     private var loadTask: Task<Void, Never>?
-    private var loadingURL: URL?
+    private var loadGeneration = 0
+    private var pendingLoad: Int?
     private var watcher: DirectoryWatcher?
 
     private static let viewModeKey = "viewMode"
+    private static let sortKeyKey = "sortKey"
+    private static let sortAscendingKey = "sortAscending"
 
     init() {
-        viewMode = ViewMode(rawValue: UserDefaults.standard.string(forKey: Self.viewModeKey) ?? "") ?? .list
+        let defaults = UserDefaults.standard
+        viewMode = ViewMode(rawValue: defaults.string(forKey: Self.viewModeKey) ?? "") ?? .list
+        sortOrder = FennecCore.SortOrder(
+            key: SortKey(rawValue: defaults.string(forKey: Self.sortKeyKey) ?? "") ?? .name,
+            ascending: defaults.object(forKey: Self.sortAscendingKey) as? Bool ?? true)
         content = Self.makeContent(viewMode)
         super.init(nibName: nil, bundle: nil)
     }
@@ -98,8 +115,11 @@ final class FolderViewController: NSViewController {
         if let list = child as? FileListViewController {
             list.sortOrder = sortOrder
             list.onSortChange = { [weak self] order in
-                self?.sortOrder = order
-                self?.rearrange()
+                guard let self else { return }
+                self.sortOrder = order
+                UserDefaults.standard.set(order.key.rawValue, forKey: Self.sortKeyKey)
+                UserDefaults.standard.set(order.ascending, forKey: Self.sortAscendingKey)
+                self.rearrange()
             }
         }
         child.onOpen = { [weak self] in self?.openSelection() }
@@ -144,21 +164,23 @@ final class FolderViewController: NSViewController {
         let started = ContinuousClock.now
         let showHidden = showHidden
         let order = sortOrder
-        loadingURL = url
-        if !keepScroll { showLoadingIfSlow(url) }
+        loadGeneration += 1
+        let generation = loadGeneration
+        pendingLoad = generation
+        if !keepScroll { showLoadingIfSlow(generation) }
 
         loadTask = Task { [weak self] in
             let result: Result<([FileEntry], [FileEntry]), Error>
             do {
-                result = .success(try await Task.detached(priority: .userInitiated) {
+                result = .success(try await BlockingIO.run {
                     let entries = try DirectoryLoader.loadSync(url)
                     return (entries, Sorting.arrange(entries, showHidden: showHidden, order: order))
-                }.value)
+                })
             } catch {
                 result = .failure(error)
             }
-            guard let self, !Task.isCancelled, self.directory == url else { return }
-            self.loadingURL = nil
+            guard let self, !Task.isCancelled, self.loadGeneration == generation else { return }
+            self.pendingLoad = nil
             let loaded = ContinuousClock.now
 
             switch result {
@@ -186,10 +208,11 @@ final class FolderViewController: NSViewController {
 
     /// A folder can take a while (a macOS permission prompt, a slow share). Rather than keep showing the
     /// previous folder's files under the new path, clear the view if loading takes longer than a blink.
-    private func showLoadingIfSlow(_ url: URL) {
+    /// Loads are numbered so a later refresh of the same folder can't be mistaken for this load still running.
+    private func showLoadingIfSlow(_ generation: Int) {
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(150))
-            guard let self, self.loadingURL == url else { return }
+            guard let self, self.pendingLoad == generation else { return }
             self.rows = []
             self.content.display([], selecting: IndexSet(), keepScroll: false)
             self.onSelectionChange?([])

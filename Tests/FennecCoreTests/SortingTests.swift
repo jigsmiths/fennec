@@ -39,14 +39,26 @@ struct SortingTests {
         #expect(names == ["img-.jpg", "img-3.jpg", "img-020.jpg", "img-100.jpg"])
     }
 
-    @Test func kindSortGroupsByType() {
+    @Test func kindSortGroupsByType() throws {
         let entries = [
             FileEntry(url: URL(filePath: "/x/b.txt"), typeIdentifier: "public.plain-text"),
             FileEntry(url: URL(filePath: "/x/a.png"), typeIdentifier: "public.png"),
             FileEntry(url: URL(filePath: "/x/a.txt"), typeIdentifier: "public.plain-text"),
         ]
         let names = Sorting.sorted(entries, by: SortOrder(key: .kind, ascending: true)).map(\.name)
-        #expect(names == ["a.txt", "b.txt", "a.png"])
+        let firstText = try #require(names.firstIndex(of: "a.txt"))
+        #expect(names[firstText + 1] == "b.txt")
+    }
+
+    // Type IDs order these pdf, jpg, txt (com.adobe < public.*); the visible labels order them jpg, pdf, txt.
+    @Test func kindSortFollowsTheVisibleLabel() {
+        let entries = [
+            FileEntry(url: URL(filePath: "/x/a.txt"), typeIdentifier: "public.plain-text"),
+            FileEntry(url: URL(filePath: "/x/a.pdf"), typeIdentifier: "com.adobe.pdf"),
+            FileEntry(url: URL(filePath: "/x/a.jpg"), typeIdentifier: "public.jpeg"),
+        ]
+        let names = Sorting.sorted(entries, by: SortOrder(key: .kind, ascending: true)).map(\.name)
+        #expect(names == ["a.jpg", "a.pdf", "a.txt"])
     }
 
     @Test func sizeSortFallsBackToNameOnTies() {

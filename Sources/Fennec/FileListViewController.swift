@@ -59,9 +59,10 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         tableView.allowsMultipleSelection = true
         // Uniform resizing: with first-column-only, Name kept all the width and pushed the other columns off-screen.
         tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
-        tableView.sortDescriptors = [NSSortDescriptor(key: sortOrder.key.rawValue, ascending: sortOrder.ascending)]
         tableView.autosaveName = "FileListColumns"
         tableView.autosaveTableColumns = true
+        // Set after autosave, which restores its own saved sort indicator; the folder's sort order is the source of truth.
+        tableView.sortDescriptors = [NSSortDescriptor(key: sortOrder.key.rawValue, ascending: sortOrder.ascending)]
         tableView.dataSource = self
         tableView.delegate = self
         tableView.target = self
@@ -82,17 +83,36 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
 
     func display(_ newRows: [FileEntry], selecting indexes: IndexSet, keepScroll: Bool) {
         loadViewIfNeeded()
-        let scrollOrigin = scrollView.contentView.bounds.origin
-        rows = newRows
-        tableView.reloadData()
-        tableView.selectRowIndexes(indexes, byExtendingSelection: false)
-
+        let update = {
+            self.replaceRows(with: newRows)
+            self.tableView.selectRowIndexes(indexes, byExtendingSelection: false)
+        }
         if keepScroll {
-            scrollView.contentView.scroll(to: scrollOrigin)
-        } else if let first = indexes.first {
+            scrollView.keepingScrollPosition(update)
+            return
+        }
+        update()
+        if let first = indexes.first {
             tableView.scrollRowToVisible(first)
         } else {
             tableView.scrollRowToVisible(0)
+        }
+    }
+
+    /// reloadData() throws away every row and cell view, so each reload rebuilt ~45 rows from scratch.
+    /// Adjusting the row count and refreshing rows in place keeps the existing views and reuses them.
+    private func replaceRows(with newRows: [FileEntry]) {
+        let oldCount = rows.count
+        rows = newRows
+        if newRows.count > oldCount {
+            tableView.insertRows(at: IndexSet(oldCount..<newRows.count), withAnimation: [])
+        } else if newRows.count < oldCount {
+            tableView.removeRows(at: IndexSet(newRows.count..<oldCount), withAnimation: [])
+        }
+        let common = min(oldCount, newRows.count)
+        if common > 0 {
+            tableView.reloadData(forRowIndexes: IndexSet(0..<common),
+                                 columnIndexes: IndexSet(0..<tableView.numberOfColumns))
         }
     }
 
@@ -142,7 +162,7 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
 
         let cell = tableView.makeView(withIdentifier: TextCell.reuseID, owner: self) as? TextCell ?? TextCell()
         switch key {
-        case .size: cell.set(FileDisplay.size(for: entry), alignment: .right)
+        case .size: cell.set(FileFormatting.size(for: entry), alignment: .right)
         case .modified: cell.set(FileDisplay.date(entry.modified), alignment: .left)
         case .kind: cell.set(FileDisplay.kind(for: entry), alignment: .left)
         case .name: break
@@ -167,31 +187,34 @@ final class FileNameCell: NSTableCellView {
         textField = label
 
         label.lineBreakMode = .byTruncatingMiddle
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         cloudBadge.image = NSImage(systemSymbolName: "icloud.and.arrow.down", accessibilityDescription: "Not downloaded")
         cloudBadge.contentTintColor = .secondaryLabelColor
-        [icon, label, cloudBadge].forEach(addSubview)
+
+        for view in [icon, label, cloudBadge] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 18),
+            icon.heightAnchor.constraint(equalToConstant: 18),
+            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            cloudBadge.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 4),
+            cloudBadge.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
+            cloudBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
-
-    override func layout() {
-        super.layout()
-        let height = bounds.height
-        icon.frame = NSRect(x: 2, y: (height - 18) / 2, width: 18, height: 18)
-        let badgeWidth: CGFloat = cloudBadge.isHidden ? 0 : 20
-        let labelX: CGFloat = 26
-        let labelHeight = label.cell?.cellSize.height ?? 16
-        label.frame = NSRect(x: labelX, y: (height - labelHeight) / 2,
-                             width: max(0, bounds.width - labelX - badgeWidth - 4), height: labelHeight)
-        cloudBadge.frame = NSRect(x: bounds.width - badgeWidth, y: (height - 16) / 2, width: 16, height: 16)
-    }
 
     func configure(_ entry: FileEntry) {
         icon.image = FileDisplay.icon(for: entry)
         label.stringValue = entry.name
         cloudBadge.isHidden = entry.cloudStatus != .notDownloaded
         alphaValue = entry.isHidden ? 0.55 : 1
-        needsLayout = true
     }
 }
 
@@ -208,17 +231,16 @@ final class TextCell: NSTableCellView {
         label.textColor = .secondaryLabelColor
         label.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize + 1, weight: .regular)
         label.lineBreakMode = .byTruncatingTail
+        label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
-
-    override func layout() {
-        super.layout()
-        let labelHeight = label.cell?.cellSize.height ?? 16
-        label.frame = NSRect(x: 2, y: (bounds.height - labelHeight) / 2,
-                             width: max(0, bounds.width - 6), height: labelHeight)
-    }
 
     func set(_ text: String, alignment: NSTextAlignment) {
         label.stringValue = text

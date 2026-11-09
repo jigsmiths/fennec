@@ -5,14 +5,13 @@ import Quartz
 /// The preview pane: a Quick Look preview of the selected file plus its details.
 @MainActor
 final class PreviewViewController: NSViewController {
-    var showHidden = false
-
     private let preview: QLPreviewView = QLPreviewView(frame: .zero, style: .normal)
     private let bigIcon = NSImageView()
     private let nameLabel = NSTextField(wrappingLabelWithString: "")
     private let detailsLabel = NSTextField(wrappingLabelWithString: "")
     private var pendingRender: Task<Void, Never>?
     private var folderCount: Task<Void, Never>?
+    private var shownKey: String?
 
     override func loadView() {
         preview.shouldCloseWithWindow = true
@@ -43,20 +42,25 @@ final class PreviewViewController: NSViewController {
             detailsLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
         view = container
-        render([])
+        render([], includeHidden: false)
     }
 
     /// Waits briefly so arrowing through a folder doesn't load a preview for every row passed.
-    func show(_ entries: [FileEntry]) {
+    /// Skips the reload when a folder refresh reports the same, unchanged selection.
+    func show(_ entries: [FileEntry], includeHidden: Bool) {
+        let key = entries.map { "\($0.path)|\($0.modified?.timeIntervalSince1970 ?? 0)" }.joined(separator: "\n")
+            + "|\(includeHidden)"
+        guard key != shownKey else { return }
         pendingRender?.cancel()
         pendingRender = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(100))
-            guard !Task.isCancelled else { return }
-            self?.render(entries)
+            guard let self, !Task.isCancelled else { return }
+            self.shownKey = key
+            self.render(entries, includeHidden: includeHidden)
         }
     }
 
-    private func render(_ entries: [FileEntry]) {
+    private func render(_ entries: [FileEntry], includeHidden: Bool) {
         loadViewIfNeeded()
         folderCount?.cancel()
 
@@ -75,13 +79,13 @@ final class PreviewViewController: NSViewController {
 
         nameLabel.stringValue = entry.name
         let modified = entry.modified.map { "Modified \(FileDisplay.date($0))" }
-        detailsLabel.stringValue = [FileDisplay.kind(for: entry), FileDisplay.size(for: entry), modified ?? ""]
+        detailsLabel.stringValue = [FileDisplay.kind(for: entry), FileFormatting.size(for: entry), modified ?? ""]
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
 
         if entry.isBrowsable {
             showIcon(FileDisplay.icon(for: entry))
-            countItems(in: entry.url)
+            countItems(in: entry.url, includeHidden: includeHidden)
         } else if entry.cloudStatus == .notDownloaded {
             // Previewing would download the file, so only say where it is.
             showIcon(FileDisplay.icon(for: entry))
@@ -100,12 +104,11 @@ final class PreviewViewController: NSViewController {
         bigIcon.isHidden = image == nil
     }
 
-    private func countItems(in url: URL) {
-        let includeHidden = showHidden
+    private func countItems(in url: URL, includeHidden: Bool) {
         folderCount = Task { [weak self] in
-            let count = await Task.detached(priority: .utility) {
+            let count = (try? await BlockingIO.run {
                 DirectoryLoader.itemCount(at: url, includeHidden: includeHidden)
-            }.value
+            }) ?? 0
             guard let self, !Task.isCancelled else { return }
             self.detailsLabel.stringValue = "Folder\n\(count) item\(count == 1 ? "" : "s")"
         }

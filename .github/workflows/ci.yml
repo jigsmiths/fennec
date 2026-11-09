@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Build app bundle
+        run: just bundle
+
+      # `just test` loads the plugin from the Command Line Tools, which the runner's Xcode doesn't need.
+      - name: Test
+        run: swift test

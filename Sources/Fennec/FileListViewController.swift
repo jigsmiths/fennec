@@ -2,24 +2,24 @@ import AppKit
 import FennecCore
 
 final class FileTableView: NSTableView {
-    var onOpen: (() -> Void)?
+    var onRename: (() -> Void)?
     var onQuickLook: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
-        if !handleFolderKey(event, onOpen: onOpen, onQuickLook: onQuickLook) {
+        if !handleFolderKey(event, onRename: onRename, onQuickLook: onQuickLook) {
             super.keyDown(with: event)
         }
     }
 }
 
-/// Return opens and space toggles Quick Look, but only without modifiers so menu shortcuts still work.
+/// Return renames (like Finder) and space toggles Quick Look, but only without modifiers so menu shortcuts still work.
 @MainActor
-func handleFolderKey(_ event: NSEvent, onOpen: (() -> Void)?, onQuickLook: (() -> Void)?) -> Bool {
+func handleFolderKey(_ event: NSEvent, onRename: (() -> Void)?, onQuickLook: (() -> Void)?) -> Bool {
     guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.function, .numericPad]).isEmpty
     else { return false }
     switch event.keyCode {
     case 36, 76:
-        onOpen?()
+        onRename?()
         return true
     case 49:
         onQuickLook?()
@@ -32,8 +32,10 @@ func handleFolderKey(_ event: NSEvent, onOpen: (() -> Void)?, onQuickLook: (() -
 @MainActor
 final class FileListViewController: NSViewController, FolderContentView, NSTableViewDataSource, NSTableViewDelegate {
     var onOpen: (() -> Void)?
+    var onRename: (() -> Void)?
     var onSelectionChange: (() -> Void)?
     var onQuickLook: (() -> Void)?
+    weak var dropHandler: FolderDropHandler?
     var onSortChange: ((FennecCore.SortOrder) -> Void)?
     var sortOrder = FennecCore.SortOrder()
 
@@ -67,8 +69,11 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         tableView.delegate = self
         tableView.target = self
         tableView.doubleAction = #selector(rowDoubleClicked(_:))
-        tableView.onOpen = { [weak self] in self?.onOpen?() }
+        tableView.onRename = { [weak self] in self?.onRename?() }
         tableView.onQuickLook = { [weak self] in self?.onQuickLook?() }
+        tableView.registerForDraggedTypes([.fileURL])
+        tableView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
+        tableView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: false)
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
@@ -124,6 +129,17 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         tableView.keyDown(with: event)
     }
 
+    func beginRename(at index: Int, onEnd: @escaping (String?) -> Void) {
+        let column = tableView.column(withIdentifier: .init(SortKey.name.rawValue))
+        guard index < rows.count, column >= 0 else { return onEnd(nil) }
+        tableView.scrollRowToVisible(index)
+        guard let cell = tableView.view(atColumn: column, row: index, makeIfNecessary: true) as? NSTableCellView,
+              let field = cell.textField else { return onEnd(nil) }
+        InlineRename.begin(
+            on: field, name: rows[index].name, isFolder: rows[index].isBrowsable,
+            returnFocusTo: tableView, onEnd: onEnd)
+    }
+
     @objc private func rowDoubleClicked(_ sender: Any?) {
         guard tableView.clickedRow >= 0 else { return }
         onOpen?()
@@ -132,6 +148,34 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
     // MARK: Table
 
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+
+    // MARK: Drag and drop
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        rows[row].url as NSURL
+    }
+
+    func tableView(
+        _ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
+        proposedDropOperation dropOperation: NSTableView.DropOperation
+    ) -> NSDragOperation {
+        let folder = dropFolder(row: row, operation: dropOperation)
+        // Anywhere that isn't a folder row drops into the folder being shown, so highlight the whole list.
+        if folder == nil { tableView.setDropRow(-1, dropOperation: .on) }
+        return dropHandler?.validateDrop(info, onto: folder) ?? []
+    }
+
+    func tableView(
+        _ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
+        dropOperation: NSTableView.DropOperation
+    ) -> Bool {
+        dropHandler?.acceptDrop(info, onto: dropFolder(row: row, operation: dropOperation)) ?? false
+    }
+
+    private func dropFolder(row: Int, operation: NSTableView.DropOperation) -> FileEntry? {
+        guard operation == .on, row >= 0, row < rows.count, rows[row].isBrowsable else { return nil }
+        return rows[row]
+    }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         onSelectionChange?()

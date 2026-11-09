@@ -12,15 +12,35 @@ enum MainMenu {
             item("Quit Fennec", #selector(NSApplication.terminate(_:)), "q"),
         ]))
 
+        // Cmd+Down opens too, like Finder; hidden so the menu shows one Open item.
+        let openWithArrow = item("Open", #selector(MainWindowController.openSelection(_:)), arrow(NSDownArrowFunctionKey))
+        openWithArrow.isHidden = true
+        openWithArrow.allowsKeyEquivalentWhenHidden = true
+
         main.addItem(submenu("File", [
             item("New Window", #selector(AppDelegate.newWindow(_:)), "n"),
-            item("Open", #selector(MainWindowController.openSelection(_:)), arrow(NSDownArrowFunctionKey)),
+            item("New Folder", #selector(MainWindowController.newFolder(_:)), "n", [.command, .shift]),
+            .separator(),
+            item("Open", #selector(MainWindowController.openSelection(_:)), "o"),
+            openWithArrow,
+            item("Rename", #selector(MainWindowController.renameSelection(_:))),
             item("Quick Look", #selector(MainWindowController.toggleQuickLook(_:)), "y"),
+            .separator(),
+            item("Move to Trash", #selector(MainWindowController.moveToTrash(_:)), backspace),
+            item("Delete Immediately…", #selector(MainWindowController.deleteImmediately(_:)), backspace,
+                 [.command, .option]),
             .separator(),
             item("Close Window", #selector(NSWindow.performClose(_:)), "w"),
         ]))
 
         main.addItem(submenu("Edit", [
+            item("Undo", Selector(("undo:")), "z"),
+            item("Redo", Selector(("redo:")), "z", [.command, .shift]),
+            .separator(),
+            item("Cut", #selector(NSText.cut(_:)), "x"),
+            item("Copy", #selector(NSText.copy(_:)), "c"),
+            item("Paste", #selector(NSText.paste(_:)), "v"),
+            item("Move Item Here", #selector(MainWindowController.pasteAsMove(_:)), "v", [.command, .option]),
             item("Select All", #selector(NSResponder.selectAll(_:)), "a"),
         ]))
 
@@ -86,4 +106,7 @@ enum MainMenu {
     private static func arrow(_ key: Int) -> String {
         String(Character(UnicodeScalar(UInt16(key))!))
     }
+
+    /// The Delete key in a menu shortcut (Cmd+Delete for Move to Trash).
+    private static let backspace = String(Character(UnicodeScalar(UInt8(NSBackspaceCharacter))))
 }

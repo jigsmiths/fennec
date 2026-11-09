@@ -9,13 +9,24 @@ enum ViewMode: String {
 @MainActor
 protocol FolderContentView: NSViewController {
     var onOpen: (() -> Void)? { get set }
+    /// Return was pressed: rename the selection, like Finder.
+    var onRename: (() -> Void)? { get set }
     var onSelectionChange: (() -> Void)? { get set }
     var onQuickLook: (() -> Void)? { get set }
+    var dropHandler: FolderDropHandler? { get set }
     var selectedIndexes: IndexSet { get }
     func display(_ rows: [FileEntry], selecting: IndexSet, keepScroll: Bool)
     func focus()
     /// Key events forwarded from the Quick Look panel, so arrow keys keep moving the selection.
     func handleKey(_ event: NSEvent)
+    func beginRename(at index: Int, onEnd: @escaping (String?) -> Void)
+}
+
+/// Decides what a drop onto the folder (nil) or onto one of its subfolders does.
+@MainActor
+protocol FolderDropHandler: AnyObject {
+    func validateDrop(_ info: NSDraggingInfo, onto folder: FileEntry?) -> NSDragOperation
+    func acceptDrop(_ info: NSDraggingInfo, onto folder: FileEntry?) -> Bool
 }
 
 extension NSScrollView {
@@ -34,6 +45,11 @@ final class FolderViewController: NSViewController {
     var onOpenFolder: ((URL) -> Void)?
     var onSelectionChange: (([FileEntry]) -> Void)?
     var onQuickLook: (() -> Void)?
+    var onRename: ((URL, String) -> Void)?
+    var onTransfer: (([URL], URL, TransferMode) -> Void)?
+
+    /// The folder being shown.
+    var currentDirectory: URL? { directory }
 
     var showHidden = false {
         didSet { rearrange() }
@@ -49,6 +65,9 @@ final class FolderViewController: NSViewController {
     private var loadTask: Task<Void, Never>?
     private var loadGeneration = 0
     private var pendingLoad: Int?
+    private var pendingRenamePath: String?
+    private var openRenames = 0
+    private var reloadAfterRename = false
     private var watcher: DirectoryWatcher?
 
     private static let viewModeKey = "viewMode"
@@ -123,6 +142,8 @@ final class FolderViewController: NSViewController {
             }
         }
         child.onOpen = { [weak self] in self?.openSelection() }
+        child.onRename = { [weak self] in self?.renameSelection() }
+        child.dropHandler = self
         child.onSelectionChange = { [weak self] in
             guard let self else { return }
             self.onSelectionChange?(self.selectedEntries)
@@ -149,7 +170,7 @@ final class FolderViewController: NSViewController {
     func show(_ url: URL, selecting selection: URL?) {
         loadViewIfNeeded()
         directory = url
-        watcher = DirectoryWatcher(url: url) { [weak self] in self?.reload() }
+        watcher = DirectoryWatcher(url: url) { [weak self] in self?.folderChanged() }
         load(url, selecting: selection.map { [$0.standardizedFileURL.path] } ?? [], keepScroll: false)
         content.focus()
     }
@@ -157,6 +178,13 @@ final class FolderViewController: NSViewController {
     private func reload() {
         guard let directory else { return }
         load(directory, selecting: selectedPaths, keepScroll: true)
+    }
+
+    /// Reloads now and selects the given items, e.g. after a paste or rename. Optionally starts renaming the first.
+    func reload(selecting urls: [URL], thenRename: Bool = false) {
+        guard let directory else { return }
+        if thenRename { pendingRenamePath = urls.first?.standardizedFileURL.path }
+        load(directory, selecting: urls.map { $0.standardizedFileURL.path }, keepScroll: true)
     }
 
     private func load(_ url: URL, selecting paths: [String], keepScroll: Bool) {
@@ -235,6 +263,12 @@ final class FolderViewController: NSViewController {
         } else {
             messageLabel.isHidden = true
         }
+
+        if let path = pendingRenamePath, rows.contains(where: { $0.path == path }) {
+            pendingRenamePath = nil
+            // Wait for the new row to be on screen before editing it.
+            DispatchQueue.main.async { [weak self] in self?.renameSelection() }
+        }
     }
 
     private func showMessage(_ text: String) {
@@ -262,5 +296,63 @@ final class FolderViewController: NSViewController {
         for entry in entries where !entry.isBrowsable {
             NSWorkspace.shared.open(entry.url)
         }
+    }
+
+    func renameSelection() {
+        let entries = selectedEntries
+        guard entries.count == 1, let entry = entries.first,
+              let index = rows.firstIndex(where: { $0.path == entry.path }) else { return }
+        openRenames += 1
+        content.beginRename(at: index) { [weak self] newName in
+            guard let self else { return }
+            openRenames -= 1
+            if let newName { onRename?(entry.url, newName) }
+            if openRenames == 0, reloadAfterRename {
+                reloadAfterRename = false
+                reload()
+            }
+        }
+    }
+
+    // A refresh replaces the row's cell and would end the rename, e.g. the change notice for a new folder.
+    private func folderChanged() {
+        if openRenames > 0 {
+            reloadAfterRename = true
+        } else {
+            reload()
+        }
+    }
+}
+
+extension FolderViewController: FolderDropHandler {
+    func validateDrop(_ info: NSDraggingInfo, onto folder: FileEntry?) -> NSDragOperation {
+        guard let (_, _, mode) = drop(info, onto: folder) else { return [] }
+        return mode == .copy ? .copy : .move
+    }
+
+    func acceptDrop(_ info: NSDraggingInfo, onto folder: FileEntry?) -> Bool {
+        guard let (urls, target, mode) = drop(info, onto: folder) else { return false }
+        onTransfer?(urls, target, mode)
+        return true
+    }
+
+    /// What a drop would do, or nil when it would do nothing or isn't allowed.
+    private func drop(_ info: NSDraggingInfo, onto folder: FileEntry?) -> ([URL], URL, TransferMode)? {
+        guard let target = folder?.url ?? directory else { return nil }
+        let urls = FileClipboard.fileURLs(from: info.draggingPasteboard)
+        guard let first = urls.first else { return nil }
+
+        let targetPath = target.standardizedFileURL.path
+        if urls.contains(where: { targetPath == $0.standardizedFileURL.path
+            || targetPath.hasPrefix($0.standardizedFileURL.path + "/") }) {
+            return nil
+        }
+        let flags = NSEvent.modifierFlags
+        let mode = DropRules.mode(
+            sameVolume: DropRules.isSameVolume(first, target),
+            option: flags.contains(.option), command: flags.contains(.command))
+        let alreadyThere = urls.allSatisfy { $0.deletingLastPathComponent().standardizedFileURL.path == targetPath }
+        if mode == .move, alreadyThere { return nil }
+        return (urls, target, mode)
     }
 }

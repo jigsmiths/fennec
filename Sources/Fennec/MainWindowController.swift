@@ -16,12 +16,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var backItem: NSToolbarItem?
     private var forwardItem: NSToolbarItem?
     private var viewModeItem: NSToolbarItemGroup?
+    private var operations: OperationsController!
+    private let operationsStatus = OperationsStatusView()
+    private var operationsItem: NSToolbarItem?
 
     private static let backID = NSToolbarItem.Identifier("back")
     private static let forwardID = NSToolbarItem.Identifier("forward")
     private static let pathID = NSToolbarItem.Identifier("path")
     private static let viewModeID = NSToolbarItem.Identifier("viewMode")
     private static let previewToggleID = NSToolbarItem.Identifier("previewToggle")
+    private static let operationsID = NSToolbarItem.Identifier("operations")
     private static let previewVisibleKey = "previewVisible"
     private static let previewWidthSetKey = "previewWidthSet"
 
@@ -32,6 +36,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         super.init(window: window)
+        operations = OperationsController(window: window)
 
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
         sidebarItem.minimumThickness = 170
@@ -66,6 +71,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         folder.onOpenFolder = { [weak self] url in self?.navigate(to: url) }
         folder.onSelectionChange = { [weak self] entries in self?.selectionChanged(entries) }
         folder.onQuickLook = { [weak self] in self?.toggleQuickLook(nil) }
+        folder.onRename = { [weak self] url, name in self?.rename(url, to: name) }
+        folder.onTransfer = { [weak self] urls, destination, mode in
+            self?.operations.transfer(urls, to: destination, mode: mode)
+        }
+        operations.onJobsChanged = { [weak self] in self?.updateOperationsItem() }
+        operations.onPlaced = { [weak self] urls in self?.folder.reload(selecting: urls) }
 
         show(history.current, selecting: nil)
     }
@@ -197,6 +208,68 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
+    // MARK: File operations
+
+    private var selectedURLs: [URL] { folder.selectedEntries.map(\.url) }
+
+    @objc func copy(_ sender: Any?) {
+        FileClipboard.write(selectedURLs, cut: false)
+    }
+
+    @objc func cut(_ sender: Any?) {
+        FileClipboard.write(selectedURLs, cut: true)
+    }
+
+    @objc func paste(_ sender: Any?) {
+        let clipboard = FileClipboard.read()
+        paste(clipboard.urls, mode: clipboard.isCut ? .move : .copy)
+    }
+
+    /// Cmd+Option+V: move what's on the clipboard here, like Finder.
+    @objc func pasteAsMove(_ sender: Any?) {
+        paste(FileClipboard.read().urls, mode: .move)
+    }
+
+    private func paste(_ urls: [URL], mode: TransferMode) {
+        guard let destination = folder.currentDirectory, !urls.isEmpty else { return }
+        operations.transfer(urls, to: destination, mode: mode)
+        if mode == .move { FileClipboard.clear() }
+    }
+
+    @objc func moveToTrash(_ sender: Any?) {
+        operations.trash(selectedURLs)
+    }
+
+    @objc func deleteImmediately(_ sender: Any?) {
+        operations.deleteImmediately(selectedURLs)
+    }
+
+    @objc func renameSelection(_ sender: Any?) {
+        folder.renameSelection()
+    }
+
+    @objc func newFolder(_ sender: Any?) {
+        guard let directory = folder.currentDirectory else { return }
+        Task {
+            if let created = await operations.newFolder(in: directory) {
+                folder.reload(selecting: [created], thenRename: true)
+            }
+        }
+    }
+
+    private func rename(_ url: URL, to name: String) {
+        Task {
+            // On failure, reloading puts the real name back over the rejected text.
+            let renamed = await operations.rename(url, to: name)
+            folder.reload(selecting: [renamed ?? url])
+        }
+    }
+
+    private func updateOperationsItem() {
+        operationsStatus.show(operations.visibleJobs)
+        operationsItem?.isHidden = operations.visibleJobs.isEmpty
+    }
+
     // MARK: Menu validation
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -205,6 +278,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(goForward(_:)): return history.canGoForward
         case #selector(goUp(_:)): return history.canGoUp
         case #selector(toggleQuickLook(_:)): return !folder.selectedEntries.isEmpty
+        case #selector(copy(_:)), #selector(cut(_:)), #selector(moveToTrash(_:)), #selector(deleteImmediately(_:)):
+            return !folder.selectedEntries.isEmpty
+        case #selector(renameSelection(_:)): return folder.selectedEntries.count == 1
+        case #selector(paste(_:)), #selector(pasteAsMove(_:)):
+            return FileClipboard.hasFiles && folder.currentDirectory != nil
         case #selector(toggleHiddenFiles(_:)):
             menuItem.state = folder.showHidden ? .on : .off
         case #selector(showAsList(_:)):
@@ -226,7 +304,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.toggleSidebar, .sidebarTrackingSeparator, Self.backID, Self.forwardID, Self.pathID,
-         .flexibleSpace, Self.viewModeID, Self.previewToggleID]
+         .flexibleSpace, Self.operationsID, Self.viewModeID, Self.previewToggleID]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -274,6 +352,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return group
         case Self.previewToggleID:
             return button(id, "Preview", "sidebar.right", #selector(togglePreview(_:)))
+        case Self.operationsID:
+            let item = NSToolbarItem(itemIdentifier: id)
+            item.label = "Operations"
+            item.view = operationsStatus
+            item.isHidden = operations.visibleJobs.isEmpty
+            operationsItem = item
+            return item
         default:
             return nil
         }

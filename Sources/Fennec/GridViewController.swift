@@ -4,10 +4,11 @@ import QuickLookThumbnailing
 
 final class GridCollectionView: NSCollectionView {
     var onOpen: (() -> Void)?
+    var onRename: (() -> Void)?
     var onQuickLook: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
-        if !handleFolderKey(event, onOpen: onOpen, onQuickLook: onQuickLook) {
+        if !handleFolderKey(event, onRename: onRename, onQuickLook: onQuickLook) {
             super.keyDown(with: event)
         }
     }
@@ -24,8 +25,10 @@ final class GridCollectionView: NSCollectionView {
 @MainActor
 final class GridViewController: NSViewController, FolderContentView, NSCollectionViewDataSource, NSCollectionViewDelegate {
     var onOpen: (() -> Void)?
+    var onRename: (() -> Void)?
     var onSelectionChange: (() -> Void)?
     var onQuickLook: (() -> Void)?
+    weak var dropHandler: FolderDropHandler?
 
     private let collectionView = GridCollectionView()
     private let scrollView = NSScrollView()
@@ -46,7 +49,11 @@ final class GridViewController: NSViewController, FolderContentView, NSCollectio
         collectionView.dataSource = self
         collectionView.delegate = self
         collectionView.onOpen = { [weak self] in self?.onOpen?() }
+        collectionView.onRename = { [weak self] in self?.onRename?() }
         collectionView.onQuickLook = { [weak self] in self?.onQuickLook?() }
+        collectionView.registerForDraggedTypes([.fileURL])
+        collectionView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
+        collectionView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: false)
 
         scrollView.documentView = collectionView
         scrollView.hasVerticalScroller = true
@@ -90,6 +97,49 @@ final class GridViewController: NSViewController, FolderContentView, NSCollectio
         collectionView.keyDown(with: event)
     }
 
+    func beginRename(at index: Int, onEnd: @escaping (String?) -> Void) {
+        guard index < rows.count else { return onEnd(nil) }
+        let indexPath = IndexPath(item: index, section: 0)
+        collectionView.scrollToItems(at: [indexPath], scrollPosition: .nearestHorizontalEdge)
+        collectionView.layoutSubtreeIfNeeded()
+        guard let field = collectionView.item(at: indexPath)?.textField else { return onEnd(nil) }
+        InlineRename.begin(
+            on: field, name: rows[index].name, isFolder: rows[index].isBrowsable,
+            returnFocusTo: collectionView, onEnd: onEnd)
+    }
+
+    // MARK: Drag and drop
+
+    func collectionView(_ collectionView: NSCollectionView, canDragItemsAt indexPaths: Set<IndexPath>, with event: NSEvent) -> Bool {
+        true
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
+        rows[indexPath.item].url as NSURL
+    }
+
+    func collectionView(
+        _ collectionView: NSCollectionView, validateDrop draggingInfo: NSDraggingInfo,
+        proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
+        dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>
+    ) -> NSDragOperation {
+        let folder = dropFolder(index: proposedIndexPath.pointee.item, operation: dropOperation.pointee)
+        if folder == nil { dropOperation.pointee = .before }
+        return dropHandler?.validateDrop(draggingInfo, onto: folder) ?? []
+    }
+
+    func collectionView(
+        _ collectionView: NSCollectionView, acceptDrop draggingInfo: NSDraggingInfo, indexPath: IndexPath,
+        dropOperation: NSCollectionView.DropOperation
+    ) -> Bool {
+        dropHandler?.acceptDrop(draggingInfo, onto: dropFolder(index: indexPath.item, operation: dropOperation)) ?? false
+    }
+
+    private func dropFolder(index: Int, operation: NSCollectionView.DropOperation) -> FileEntry? {
+        guard operation == .on, index >= 0, index < rows.count, rows[index].isBrowsable else { return nil }
+        return rows[index]
+    }
+
     // MARK: Collection
 
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
@@ -129,6 +179,8 @@ final class GridItem: NSCollectionViewItem {
         container.layer?.cornerRadius = 8
 
         icon.imageScaling = .scaleProportionallyUpOrDown
+        // NSImageView registers as a drop target for images and files, which stole drops meant for the grid.
+        icon.unregisterDraggedTypes()
         label.alignment = .center
         label.font = .systemFont(ofSize: NSFont.smallSystemFontSize + 1)
         label.maximumNumberOfLines = 2
@@ -154,6 +206,10 @@ final class GridItem: NSCollectionViewItem {
     }
 
     override var isSelected: Bool {
+        didSet { updateSelection() }
+    }
+
+    override var highlightState: NSCollectionViewItem.HighlightState {
         didSet { updateSelection() }
     }
 
@@ -184,8 +240,11 @@ final class GridItem: NSCollectionViewItem {
     }
 
     private func updateSelection() {
-        view.layer?.backgroundColor = isSelected
-            ? NSColor.selectedContentBackgroundColor.withAlphaComponent(0.3).cgColor
+        let isDropTarget = highlightState == .asDropTarget
+        view.layer?.backgroundColor = isSelected || isDropTarget
+            ? NSColor.selectedContentBackgroundColor.withAlphaComponent(isDropTarget ? 0.45 : 0.3).cgColor
             : nil
+        view.layer?.borderWidth = isDropTarget ? 2 : 0
+        view.layer?.borderColor = NSColor.selectedContentBackgroundColor.cgColor
     }
 }

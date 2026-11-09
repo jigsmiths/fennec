@@ -16,12 +16,22 @@ bundle version="": build
     mkdir -p {{app}}/Contents/MacOS {{app}}/Contents/Resources
     cp .build/release/Fennec {{app}}/Contents/MacOS/Fennec
     cp Resources/Info.plist {{app}}/Contents/Info.plist
+    cp Resources/AppIcon.icns {{app}}/Contents/Resources/AppIcon.icns
     if [ -n "{{version}}" ]; then /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString {{version}}" -c "Set :CFBundleVersion {{version}}" {{app}}/Contents/Info.plist; fi
     codesign --force --sign - {{app}}
 
 # ditto keeps the bundle's signature intact, unlike zip.
 package version: (bundle version)
     ditto -c -k --keepParent {{app}} .build/Fennec-{{version}}.zip
+
+# Regenerates Resources/AppIcon.icns from Resources/AppIcon.svg.
+icon:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/fennec-icon.XXXXXX")"
+    trap 'rm -rf "$dir"' EXIT
+    swift scripts/make-icon.swift Resources/AppIcon.svg "$dir/AppIcon.iconset"
+    iconutil -c icns "$dir/AppIcon.iconset" -o Resources/AppIcon.icns
 
 run: bundle
     open {{app}}

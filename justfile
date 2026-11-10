@@ -11,13 +11,18 @@ testing_plugin := "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugin
 test:
     swift test -Xswiftc -load-plugin-library -Xswiftc {{testing_plugin}}
 
-bundle: build
+bundle version="": build
     rm -rf {{app}}
     mkdir -p {{app}}/Contents/MacOS {{app}}/Contents/Resources
     cp .build/release/Fennec {{app}}/Contents/MacOS/Fennec
     cp Resources/Info.plist {{app}}/Contents/Info.plist
     cp Resources/AppIcon.icns {{app}}/Contents/Resources/AppIcon.icns
+    if [ -n "{{version}}" ]; then /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString {{version}}" -c "Set :CFBundleVersion {{version}}" {{app}}/Contents/Info.plist; fi
     codesign --force --sign - {{app}}
+
+# ditto keeps the bundle's signature intact, unlike zip.
+package version: (bundle version)
+    ditto -c -k --keepParent {{app}} .build/Fennec-{{version}}.zip
 
 # Regenerates Resources/AppIcon.icns from Resources/AppIcon.svg.
 icon:

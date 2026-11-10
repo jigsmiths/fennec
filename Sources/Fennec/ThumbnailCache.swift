@@ -29,7 +29,7 @@ final class ThumbnailCache {
         let request = QLThumbnailGenerator.Request(
             fileAt: entry.url, size: CGSize(width: size, height: size),
             scale: NSScreen.main?.backingScaleFactor ?? 2, representationTypes: .thumbnail)
-        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak self] representation, _ in
+        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { @Sendable [weak self] representation, _ in
             guard let cgImage = representation?.cgImage else { return }
             Task { @MainActor in
                 let image = NSImage(cgImage: cgImage, size: .zero)

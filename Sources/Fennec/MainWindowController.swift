@@ -20,6 +20,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     private static let viewModeID = NSToolbarItem.Identifier("viewMode")
     private static let previewToggleID = NSToolbarItem.Identifier("previewToggle")
+    private static let splitToggleID = NSToolbarItem.Identifier("splitToggle")
     private static let operationsID = NSToolbarItem.Identifier("operations")
     private static let previewWidthSetKey = "previewWidthSet"
 
@@ -397,7 +398,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, Self.operationsID, Self.viewModeID,
-         Self.previewToggleID]
+         Self.splitToggleID, Self.previewToggleID]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -422,6 +423,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return group
         case Self.previewToggleID:
             return button(id, "Preview", "sidebar.right", #selector(togglePreview(_:)))
+        case Self.splitToggleID:
+            return button(id, "Split Panes", "rectangle.split.2x1", #selector(toggleSplit(_:)))
         case Self.operationsID:
             let item = NSToolbarItem(itemIdentifier: id)
             item.label = "Operations"

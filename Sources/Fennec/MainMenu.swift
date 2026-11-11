@@ -42,11 +42,17 @@ enum MainMenu {
             item("Paste", #selector(NSText.paste(_:)), "v"),
             item("Move Item Here", #selector(MainWindowController.pasteAsMove(_:)), "v", [.command, .option]),
             item("Select All", #selector(NSResponder.selectAll(_:)), "a"),
+            .separator(),
+            item("Copy to Other Pane", #selector(MainWindowController.copyToOtherPane(_:)), "c", [.command, .shift]),
+            item("Move to Other Pane", #selector(MainWindowController.moveToOtherPane(_:)), "m", [.command, .shift]),
         ]))
 
         main.addItem(submenu("View", [
             item("as List", #selector(MainWindowController.showAsList(_:)), "1"),
             item("as Grid", #selector(MainWindowController.showAsGrid(_:)), "2"),
+            .separator(),
+            item("Split Panes", #selector(MainWindowController.toggleSplit(_:)), "s", [.command, .option]),
+            item("Open in Other Pane", #selector(MainWindowController.openInOtherPane(_:)), "o", [.command, .option]),
             .separator(),
             item("Show Preview", #selector(MainWindowController.togglePreview(_:)), "p", [.command, .shift]),
             item("Show Hidden Files", #selector(MainWindowController.toggleHiddenFiles(_:)), ".", [.command, .shift]),

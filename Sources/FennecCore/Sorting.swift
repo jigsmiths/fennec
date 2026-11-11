@@ -1,10 +1,10 @@
 import Foundation
 
-public enum SortKey: String, Sendable, CaseIterable {
+public enum SortKey: String, Sendable, CaseIterable, Codable {
     case name, size, modified, kind
 }
 
-public struct SortOrder: Sendable, Equatable {
+public struct SortOrder: Sendable, Equatable, Codable {
     public var key: SortKey
     public var ascending: Bool
 

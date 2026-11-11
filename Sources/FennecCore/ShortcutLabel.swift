@@ -4,7 +4,7 @@ public enum ShortcutLabel {
         // Declared in the order macOS displays them.
         case control, option, shift, command
 
-        var symbol: String {
+        public var symbol: String {
             switch self {
             case .control: "⌃"
             case .option: "⌥"

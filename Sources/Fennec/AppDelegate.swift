@@ -51,6 +51,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openWindow(WindowDefaults.window(at: current ?? Places.home))
     }
 
+    @objc func showShortcuts(_ sender: Any?) {
+        ShortcutsWindowController.shared.show()
+    }
+
     private func openWindow(_ state: WindowState) {
         let controller = MainWindowController(state: state)
         controller.onClose = { [weak self, weak controller] in

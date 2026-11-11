@@ -51,7 +51,7 @@ enum MainMenu {
             item("as List", #selector(MainWindowController.showAsList(_:)), "1"),
             item("as Grid", #selector(MainWindowController.showAsGrid(_:)), "2"),
             .separator(),
-            item("Split Panes", #selector(MainWindowController.toggleSplit(_:)), "\\"),
+            item("Split Panes", #selector(MainWindowController.toggleSplit(_:)), "u"),
             item("Open in Other Pane", #selector(MainWindowController.openInOtherPane(_:)), "o", [.command, .option]),
             .separator(),
             item("Show Preview", #selector(MainWindowController.togglePreview(_:)), "p", [.command, .shift]),

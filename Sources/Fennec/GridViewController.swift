@@ -6,11 +6,56 @@ final class GridCollectionView: NSCollectionView {
     var onOpen: (() -> Void)?
     var onRename: (() -> Void)?
     var onQuickLook: (() -> Void)?
+    var onSwitchPane: (() -> Void)?
+    var onFocus: (() -> Void)?
+
+    /// Whether selected tiles use the strong highlight: only while this grid has focus in the key window,
+    /// like a table's selection.
+    var isEmphasized: Bool {
+        window?.isKeyWindow == true && window?.firstResponder === self
+    }
 
     override func keyDown(with event: NSEvent) {
-        if !handleFolderKey(event, onRename: onRename, onQuickLook: onQuickLook) {
+        if !handleFolderKey(event, onRename: onRename, onQuickLook: onQuickLook, onSwitchPane: onSwitchPane) {
             super.keyDown(with: event)
         }
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became {
+            refreshSelectionStyle()
+            onFocus?()
+        }
+        return became
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        // The window still reports this view as first responder until resigning returns, so restyle after.
+        if resigned { DispatchQueue.main.async { [weak self] in self?.refreshSelectionStyle() } }
+        return resigned
+    }
+
+    // Only our own observations: removeObserver(self) would also drop NSCollectionView's internal ones.
+    private var keyObservers: [NSObjectProtocol] = []
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        for observer in keyObservers { NotificationCenter.default.removeObserver(observer) }
+        keyObservers = []
+        guard let window else { return }
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            keyObservers.append(NotificationCenter.default.addObserver(
+                forName: name, object: window, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshSelectionStyle() }
+            })
+        }
+    }
+
+    private func refreshSelectionStyle() {
+        for item in visibleItems() { (item as? GridItem)?.refreshSelectionStyle() }
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -28,6 +73,8 @@ final class GridViewController: NSViewController, FolderContentView, NSCollectio
     var onRename: (() -> Void)?
     var onSelectionChange: (() -> Void)?
     var onQuickLook: (() -> Void)?
+    var onFocus: (() -> Void)?
+    var onSwitchPane: (() -> Void)?
     weak var dropHandler: FolderDropHandler?
 
     private let collectionView = GridCollectionView()
@@ -51,6 +98,8 @@ final class GridViewController: NSViewController, FolderContentView, NSCollectio
         collectionView.onOpen = { [weak self] in self?.onOpen?() }
         collectionView.onRename = { [weak self] in self?.onRename?() }
         collectionView.onQuickLook = { [weak self] in self?.onQuickLook?() }
+        collectionView.onSwitchPane = { [weak self] in self?.onSwitchPane?() }
+        collectionView.onFocus = { [weak self] in self?.onFocus?() }
         collectionView.registerForDraggedTypes([.fileURL])
         collectionView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         collectionView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: false)
@@ -239,11 +288,17 @@ final class GridItem: NSCollectionViewItem {
         thumbnailRequest = nil
     }
 
+    func refreshSelectionStyle() {
+        updateSelection()
+    }
+
     private func updateSelection() {
         let isDropTarget = highlightState == .asDropTarget
-        view.layer?.backgroundColor = isSelected || isDropTarget
-            ? NSColor.selectedContentBackgroundColor.withAlphaComponent(isDropTarget ? 0.45 : 0.3).cgColor
-            : nil
+        let emphasized = (collectionView as? GridCollectionView)?.isEmphasized ?? true
+        let selectionColor = emphasized || isDropTarget
+            ? NSColor.selectedContentBackgroundColor.withAlphaComponent(isDropTarget ? 0.45 : 0.3)
+            : NSColor.unemphasizedSelectedContentBackgroundColor
+        view.layer?.backgroundColor = isSelected || isDropTarget ? selectionColor.cgColor : nil
         view.layer?.borderWidth = isDropTarget ? 2 : 0
         view.layer?.borderColor = NSColor.selectedContentBackgroundColor.cgColor
     }

@@ -1,10 +1,6 @@
 import AppKit
 import FennecCore
 
-enum ViewMode: String {
-    case list, grid
-}
-
 /// A view that shows a folder's rows. The list and the grid both implement it.
 @MainActor
 protocol FolderContentView: NSViewController {
@@ -13,6 +9,8 @@ protocol FolderContentView: NSViewController {
     var onRename: (() -> Void)? { get set }
     var onSelectionChange: (() -> Void)? { get set }
     var onQuickLook: (() -> Void)? { get set }
+    var onFocus: (() -> Void)? { get set }
+    var onSwitchPane: (() -> Void)? { get set }
     var dropHandler: FolderDropHandler? { get set }
     var selectedIndexes: IndexSet { get }
     func display(_ rows: [FileEntry], selecting: IndexSet, keepScroll: Bool)
@@ -47,6 +45,12 @@ final class FolderViewController: NSViewController {
     var onQuickLook: (() -> Void)?
     var onRename: ((URL, String) -> Void)?
     var onTransfer: (([URL], URL, TransferMode) -> Void)?
+    /// The list or grid got keyboard focus, e.g. from a click.
+    var onFocus: (() -> Void)?
+    /// Tab was pressed.
+    var onSwitchPane: (() -> Void)?
+    /// The view mode or sort order changed.
+    var onSettingsChange: (() -> Void)?
 
     /// The folder being shown.
     var currentDirectory: URL? { directory }
@@ -56,7 +60,7 @@ final class FolderViewController: NSViewController {
     }
 
     private(set) var viewMode: ViewMode
-    private var sortOrder: FennecCore.SortOrder
+    private(set) var sortOrder: FennecCore.SortOrder
     private var content: FolderContentView
     private let messageLabel = NSTextField(labelWithString: "")
     private var directory: URL?
@@ -70,16 +74,10 @@ final class FolderViewController: NSViewController {
     private var reloadAfterRename = false
     private var watcher: DirectoryWatcher?
 
-    private static let viewModeKey = "viewMode"
-    private static let sortKeyKey = "sortKey"
-    private static let sortAscendingKey = "sortAscending"
-
-    init() {
-        let defaults = UserDefaults.standard
-        viewMode = ViewMode(rawValue: defaults.string(forKey: Self.viewModeKey) ?? "") ?? .list
-        sortOrder = FennecCore.SortOrder(
-            key: SortKey(rawValue: defaults.string(forKey: Self.sortKeyKey) ?? "") ?? .name,
-            ascending: defaults.object(forKey: Self.sortAscendingKey) as? Bool ?? true)
+    init(viewMode: ViewMode, sortOrder: FennecCore.SortOrder, showHidden: Bool) {
+        self.viewMode = viewMode
+        self.sortOrder = sortOrder
+        self.showHidden = showHidden
         content = Self.makeContent(viewMode)
         super.init(nibName: nil, bundle: nil)
     }
@@ -116,11 +114,12 @@ final class FolderViewController: NSViewController {
         content.removeFromParent()
 
         viewMode = mode
-        UserDefaults.standard.set(mode.rawValue, forKey: Self.viewModeKey)
+        WindowDefaults.viewMode = mode
         content = Self.makeContent(mode)
         attach(content)
         content.display(rows, selecting: indexes(of: selected), keepScroll: false)
         content.focus()
+        onSettingsChange?()
     }
 
     private static func makeContent(_ mode: ViewMode) -> FolderContentView {
@@ -136,12 +135,14 @@ final class FolderViewController: NSViewController {
             list.onSortChange = { [weak self] order in
                 guard let self else { return }
                 self.sortOrder = order
-                UserDefaults.standard.set(order.key.rawValue, forKey: Self.sortKeyKey)
-                UserDefaults.standard.set(order.ascending, forKey: Self.sortAscendingKey)
+                WindowDefaults.sortOrder = order
                 self.rearrange()
+                self.onSettingsChange?()
             }
         }
         child.onOpen = { [weak self] in self?.openSelection() }
+        child.onFocus = { [weak self] in self?.onFocus?() }
+        child.onSwitchPane = { [weak self] in self?.onSwitchPane?() }
         child.onRename = { [weak self] in self?.renameSelection() }
         child.dropHandler = self
         child.onSelectionChange = { [weak self] in
@@ -165,14 +166,19 @@ final class FolderViewController: NSViewController {
         content.handleKey(event)
     }
 
+    func focus() {
+        content.focus()
+    }
+
     // MARK: Loading
 
-    func show(_ url: URL, selecting selection: URL?) {
+    /// Shows a folder. An inactive pane passes takeFocus false so it doesn't pull focus from the active one.
+    func show(_ url: URL, selecting selection: URL?, takeFocus: Bool = true) {
         loadViewIfNeeded()
         directory = url
         watcher = DirectoryWatcher(url: url) { [weak self] in self?.folderChanged() }
         load(url, selecting: selection.map { [$0.standardizedFileURL.path] } ?? [], keepScroll: false)
-        content.focus()
+        if takeFocus { content.focus() }
     }
 
     private func reload() {

@@ -12,6 +12,8 @@ final class ShortcutsWindowController: NSWindowController {
         ("Rename", ShortcutLabel.text(key: "\r", modifiers: [])),
         ("Quick Look", ShortcutLabel.text(key: " ", modifiers: [])),
         ("Copy instead of move", "⌥ while dragging"),
+        ("Switch pane", ShortcutLabel.text(key: "\t", modifiers: [])),
+        ("Even out the panes", "Double-click the divider"),
     ]
 
     /// Items AppKit adds to the Edit menu on its own; they aren't Fennec's shortcuts.

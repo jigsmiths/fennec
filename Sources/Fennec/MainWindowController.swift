@@ -5,38 +5,46 @@ import Quartz
 @MainActor
 final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSMenuItemValidation {
     var onClose: (() -> Void)?
+    /// Something the session file records changed.
+    var onStateChange: (() -> Void)?
 
-    private var history: NavigationHistory
     private let sidebar = SidebarViewController()
-    private let folder = FolderViewController()
+    private let panes: PanesViewController
     private let preview = PreviewViewController()
-    private let pathBar = PathBarView()
     private let splitController = NSSplitViewController()
     private var previewItem: NSSplitViewItem!
-    private var backItem: NSToolbarItem?
-    private var forwardItem: NSToolbarItem?
     private var viewModeItem: NSToolbarItemGroup?
     private var operations: OperationsController!
     private let operationsStatus = OperationsStatusView()
     private var operationsItem: NSToolbarItem?
 
-    private static let backID = NSToolbarItem.Identifier("back")
-    private static let forwardID = NSToolbarItem.Identifier("forward")
-    private static let pathID = NSToolbarItem.Identifier("path")
     private static let viewModeID = NSToolbarItem.Identifier("viewMode")
     private static let previewToggleID = NSToolbarItem.Identifier("previewToggle")
+    private static let splitToggleID = NSToolbarItem.Identifier("splitToggle")
     private static let operationsID = NSToolbarItem.Identifier("operations")
-    private static let previewVisibleKey = "previewVisible"
     private static let previewWidthSetKey = "previewWidthSet"
 
-    init(start: URL) {
-        history = NavigationHistory(start: start)
+    /// The active pane's folder view. Commands, the preview and Quick Look act on it.
+    private var folder: FolderViewController { panes.active.folder }
+
+    /// The folder the active pane shows.
+    var activeFolder: URL { panes.active.currentFolder }
+
+    var windowState: WindowState {
+        panes.state(frame: window?.frame, previewVisible: !previewItem.isCollapsed)
+    }
+
+    init(state: WindowState) {
+        panes = PanesViewController(state: state)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         super.init(window: window)
         operations = OperationsController(window: window)
+        panes.configurePane = { [weak self] pane in self?.configure(pane) }
+        panes.onActivePaneChange = { [weak self] in self?.activePaneChanged() }
+        panes.onStateChange = { [weak self] in self?.stateChanged() }
 
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
         sidebarItem.minimumThickness = 170
@@ -44,21 +52,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         previewItem = NSSplitViewItem(inspectorWithViewController: preview)
         previewItem.minimumThickness = 220
         previewItem.maximumThickness = 520
-        previewItem.isCollapsed = !UserDefaults.standard.bool(forKey: Self.previewVisibleKey)
         splitController.addSplitViewItem(sidebarItem)
-        splitController.addSplitViewItem(NSSplitViewItem(viewController: folder))
+        splitController.addSplitViewItem(NSSplitViewItem(viewController: panes))
         splitController.addSplitViewItem(previewItem)
+        // Sidebar and preview widths are shared by all windows; each window's pane divider is in the session.
         splitController.splitView.identifier = NSUserInterfaceItemIdentifier("FennecSplit")
         splitController.splitView.autosaveName = "FennecSplit"
+        // After the preview exists: loading a pane's folder updates the preview.
+        panes.start()
 
         window.delegate = self
         window.contentViewController = splitController
+        // Only once the split is in the window: that restores the autosaved (shared) collapsed state, but each
+        // window keeps its own preview setting.
+        previewItem.isCollapsed = !state.previewVisible
         window.titleVisibility = .hidden
         window.toolbarStyle = .unified
         window.setContentSize(NSSize(width: 1200, height: 720))
-        window.minSize = NSSize(width: 600, height: 360)
-        window.center()
-        window.setFrameAutosaveName("FennecMainWindow")
+        updateMinimumSize(split: state.panes.count == 2)
+        place(window, frame: state.frame)
 
         let toolbar = NSToolbar(identifier: "FennecToolbar")
         toolbar.delegate = self
@@ -66,19 +78,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         toolbar.allowsUserCustomization = false
         window.toolbar = toolbar
 
-        sidebar.onNavigate = { [weak self] url in self?.navigate(to: url) }
-        pathBar.onNavigate = { [weak self] url in self?.navigate(to: url) }
-        folder.onOpenFolder = { [weak self] url in self?.navigate(to: url) }
-        folder.onSelectionChange = { [weak self] entries in self?.selectionChanged(entries) }
-        folder.onQuickLook = { [weak self] in self?.toggleQuickLook(nil) }
-        folder.onRename = { [weak self] url, name in self?.rename(url, to: name) }
-        folder.onTransfer = { [weak self] urls, destination, mode in
-            self?.operations.transfer(urls, to: destination, mode: mode)
-        }
+        sidebar.onNavigate = { [weak self] url in self?.panes.active.navigate(to: url) }
         operations.onJobsChanged = { [weak self] in self?.updateOperationsItem() }
-        operations.onPlaced = { [weak self] urls in self?.folder.reload(selecting: urls) }
-
-        show(history.current, selecting: nil)
+        operations.onPlaced = { [weak self] urls in self?.reloadPanes(showing: urls) }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -87,40 +89,115 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
         applyDefaultPreviewWidth()
+        activePaneChanged()
+    }
+
+    /// Restores a saved frame if it's still on a screen; otherwise cascades from the frontmost window.
+    private func place(_ window: NSWindow, frame: CGRect?) {
+        if let frame, NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }) {
+            window.setFrame(frame, display: false)
+        } else if let key = NSApp.keyWindow {
+            window.setFrameTopLeftPoint(NSPoint(x: key.frame.minX + 24, y: key.frame.maxY - 24))
+        } else {
+            window.center()
+        }
+    }
+
+    private func updateMinimumSize(split: Bool) {
+        window?.minSize = NSSize(width: split ? 780 : 600, height: 360)
+    }
+
+    private func stateChanged() {
+        updateMinimumSize(split: panes.isSplit)
+        onStateChange?()
+    }
+
+    // MARK: Panes
+
+    private func configure(_ pane: PaneController) {
+        let folder = pane.folder
+        folder.onOpenFolder = { [weak pane] url in pane?.navigate(to: url) }
+        folder.onSelectionChange = { [weak self, weak pane] entries in
+            guard let self, pane === self.panes.active else { return }
+            self.selectionChanged(entries)
+        }
+        folder.onQuickLook = { [weak self] in self?.toggleQuickLook(nil) }
+        folder.onRename = { [weak self, weak pane] url, name in
+            guard let pane else { return }
+            self?.rename(url, to: name, in: pane)
+        }
+        folder.onTransfer = { [weak self] urls, destination, mode in
+            self?.operations.transfer(urls, to: destination, mode: mode)
+        }
+        pane.onNavigate = { [weak self, weak pane] in
+            guard let self else { return }
+            if pane === self.panes.active { self.activePaneChanged() }
+            self.stateChanged()
+        }
+    }
+
+    /// Points the sidebar, title, view mode switch and preview at the active pane.
+    private func activePaneChanged() {
+        let url = activeFolder
+        sidebar.highlight(url)
+        window?.title = PathBarView.segments(for: url).last?.name ?? url.lastPathComponent
+        viewModeItem?.selectedIndex = folder.viewMode == .grid ? 1 : 0
+        selectionChanged(folder.selectedEntries)
+    }
+
+    /// Selects newly placed items in every pane showing the folder they landed in.
+    private func reloadPanes(showing urls: [URL]) {
+        for pane in panes.panes {
+            let path = pane.currentFolder.standardizedFileURL.path
+            let here = urls.filter { $0.deletingLastPathComponent().standardizedFileURL.path == path }
+            if !here.isEmpty { pane.folder.reload(selecting: here) }
+        }
+    }
+
+    @objc func toggleSplit(_ sender: Any?) {
+        panes.toggleSplit()
+    }
+
+    /// Shows the selected folder, or this pane's folder, in the other pane.
+    @objc func openInOtherPane(_ sender: Any?) {
+        let selected = folder.selectedEntries
+        let target = selected.count == 1 && selected[0].isBrowsable ? selected[0].url : activeFolder
+        if let other = panes.other {
+            other.navigate(to: target)
+        } else {
+            panes.openSplit(at: target)
+        }
+    }
+
+    @objc func copyToOtherPane(_ sender: Any?) {
+        transferToOtherPane(.copy)
+    }
+
+    @objc func moveToOtherPane(_ sender: Any?) {
+        transferToOtherPane(.move)
+    }
+
+    private func transferToOtherPane(_ mode: TransferMode) {
+        guard let other = panes.other, !selectedURLs.isEmpty else { return }
+        operations.transfer(selectedURLs, to: other.currentFolder, mode: mode)
     }
 
     // MARK: Navigation
 
-    func navigate(to url: URL, selecting selection: URL? = nil) {
-        history.visit(url)
-        show(history.current, selecting: selection)
-    }
-
-    private func show(_ url: URL, selecting selection: URL?) {
-        folder.show(url, selecting: selection)
-        pathBar.show(url)
-        sidebar.highlight(url)
-        window?.title = PathBarView.segments(for: url).last?.name ?? url.lastPathComponent
-        backItem?.isEnabled = history.canGoBack
-        forwardItem?.isEnabled = history.canGoForward
-    }
-
     @objc func goBack(_ sender: Any?) {
-        if let url = history.goBack() { show(url, selecting: nil) }
+        panes.active.goBack()
     }
 
     @objc func goForward(_ sender: Any?) {
-        if let url = history.goForward() { show(url, selecting: nil) }
+        panes.active.goForward()
     }
 
     @objc func goUp(_ sender: Any?) {
-        guard history.canGoUp else { return }
-        let current = history.current
-        navigate(to: current.deletingLastPathComponent(), selecting: current)
+        panes.active.goUp()
     }
 
     @objc func goToPlace(_ sender: NSMenuItem) {
-        if let url = sender.representedObject as? URL { navigate(to: url) }
+        if let url = sender.representedObject as? URL { panes.active.navigate(to: url) }
     }
 
     @objc func openSelection(_ sender: Any?) {
@@ -130,7 +207,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     // MARK: View
 
     @objc func toggleHiddenFiles(_ sender: Any?) {
-        folder.showHidden.toggle()
+        panes.setShowHidden(!panes.showsHidden)
     }
 
     @objc func showAsList(_ sender: Any?) {
@@ -152,7 +229,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     @objc func togglePreview(_ sender: Any?) {
         let show = previewItem.isCollapsed
-        UserDefaults.standard.set(show, forKey: Self.previewVisibleKey)
+        WindowDefaults.previewVisible = show
         if show, !UserDefaults.standard.bool(forKey: Self.previewWidthSetKey) {
             // Not animated: the divider can't be positioned while the pane is still sliding in.
             previewItem.isCollapsed = false
@@ -160,7 +237,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         } else {
             previewItem.animator().isCollapsed = !show
         }
-        if show { preview.show(folder.selectedEntries, includeHidden: folder.showHidden) }
+        if show { preview.show(folder.selectedEntries, includeHidden: panes.showsHidden) }
+        onStateChange?()
     }
 
     /// Opens the pane at 300pt the first time; after that the split view's autosave keeps the user's width.
@@ -173,7 +251,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     private func selectionChanged(_ entries: [FileEntry]) {
-        if !previewItem.isCollapsed { preview.show(entries, includeHidden: folder.showHidden) }
+        if !previewItem.isCollapsed { preview.show(entries, includeHidden: panes.showsHidden) }
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible {
             QLPreviewPanel.shared().reloadData()
         }
@@ -249,6 +327,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     @objc func newFolder(_ sender: Any?) {
+        let folder = folder
         guard let directory = folder.currentDirectory else { return }
         Task {
             if let created = await operations.newFolder(in: directory) {
@@ -257,11 +336,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    private func rename(_ url: URL, to name: String) {
+    private func rename(_ url: URL, to name: String, in pane: PaneController) {
         Task {
             // On failure, reloading puts the real name back over the rejected text.
             let renamed = await operations.rename(url, to: name)
-            folder.reload(selecting: [renamed ?? url])
+            pane.folder.reload(selecting: [renamed ?? url])
         }
     }
 
@@ -273,6 +352,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     // MARK: Menu validation
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let history = panes.active.history
         switch menuItem.action {
         case #selector(goBack(_:)): return history.canGoBack
         case #selector(goForward(_:)): return history.canGoForward
@@ -280,11 +360,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(toggleQuickLook(_:)): return !folder.selectedEntries.isEmpty
         case #selector(copy(_:)), #selector(cut(_:)), #selector(moveToTrash(_:)), #selector(deleteImmediately(_:)):
             return !folder.selectedEntries.isEmpty
+        case #selector(copyToOtherPane(_:)), #selector(moveToOtherPane(_:)):
+            return panes.isSplit && !folder.selectedEntries.isEmpty
         case #selector(renameSelection(_:)): return folder.selectedEntries.count == 1
         case #selector(paste(_:)), #selector(pasteAsMove(_:)):
             return FileClipboard.hasFiles && folder.currentDirectory != nil
+        case #selector(toggleSplit(_:)):
+            menuItem.state = panes.isSplit ? .on : .off
         case #selector(toggleHiddenFiles(_:)):
-            menuItem.state = folder.showHidden ? .on : .off
+            menuItem.state = panes.showsHidden ? .on : .off
         case #selector(showAsList(_:)):
             menuItem.state = folder.viewMode == .list ? .on : .off
         case #selector(showAsGrid(_:)):
@@ -296,15 +380,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         return true
     }
 
+    // MARK: Window
+
     func windowWillClose(_ notification: Notification) {
         onClose?()
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        onStateChange?()
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        onStateChange?()
     }
 
     // MARK: Toolbar
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator, Self.backID, Self.forwardID, Self.pathID,
-         .flexibleSpace, Self.operationsID, Self.viewModeID, Self.previewToggleID]
+        [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, Self.operationsID, Self.viewModeID,
+         Self.splitToggleID, Self.previewToggleID]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -316,29 +410,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         switch id {
-        case Self.backID:
-            let item = button(id, "Back", "chevron.left", #selector(goBack(_:)))
-            item.isEnabled = history.canGoBack
-            backItem = item
-            return item
-        case Self.forwardID:
-            let item = button(id, "Forward", "chevron.right", #selector(goForward(_:)))
-            item.isEnabled = history.canGoForward
-            forwardItem = item
-            return item
-        case Self.pathID:
-            let item = NSToolbarItem(itemIdentifier: id)
-            item.label = "Path"
-            item.view = pathBar
-            item.visibilityPriority = .high
-            pathBar.translatesAutoresizingMaskIntoConstraints = false
-            // A width wider than the toolbar pushes this item and the buttons into the overflow menu.
-            NSLayoutConstraint.activate([
-                pathBar.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
-                pathBar.widthAnchor.constraint(lessThanOrEqualToConstant: 900),
-                pathBar.heightAnchor.constraint(equalToConstant: 28),
-            ])
-            return item
         case Self.viewModeID:
             let images = ["list.bullet", "square.grid.2x2"].compactMap {
                 NSImage(systemSymbolName: $0, accessibilityDescription: nil)
@@ -352,6 +423,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return group
         case Self.previewToggleID:
             return button(id, "Preview", "sidebar.right", #selector(togglePreview(_:)))
+        case Self.splitToggleID:
+            return button(id, "Split Panes", "rectangle.split.2x1", #selector(toggleSplit(_:)))
         case Self.operationsID:
             let item = NSToolbarItem(itemIdentifier: id)
             item.label = "Operations"

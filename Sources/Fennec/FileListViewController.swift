@@ -4,17 +4,28 @@ import FennecCore
 final class FileTableView: NSTableView {
     var onRename: (() -> Void)?
     var onQuickLook: (() -> Void)?
+    var onSwitchPane: (() -> Void)?
+    var onFocus: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
-        if !handleFolderKey(event, onRename: onRename, onQuickLook: onQuickLook) {
+        if !handleFolderKey(event, onRename: onRename, onQuickLook: onQuickLook, onSwitchPane: onSwitchPane) {
             super.keyDown(with: event)
         }
     }
+
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became { onFocus?() }
+        return became
+    }
 }
 
-/// Return renames (like Finder) and space toggles Quick Look, but only without modifiers so menu shortcuts still work.
+/// Return renames (like Finder), space toggles Quick Look and Tab switches panes, but only without modifiers
+/// so menu shortcuts still work.
 @MainActor
-func handleFolderKey(_ event: NSEvent, onRename: (() -> Void)?, onQuickLook: (() -> Void)?) -> Bool {
+func handleFolderKey(
+    _ event: NSEvent, onRename: (() -> Void)?, onQuickLook: (() -> Void)?, onSwitchPane: (() -> Void)?
+) -> Bool {
     guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.function, .numericPad]).isEmpty
     else { return false }
     switch event.keyCode {
@@ -23,6 +34,10 @@ func handleFolderKey(_ event: NSEvent, onRename: (() -> Void)?, onQuickLook: (()
         return true
     case 49:
         onQuickLook?()
+        return true
+    case 48:
+        guard let onSwitchPane else { return false }
+        onSwitchPane()
         return true
     default:
         return false
@@ -35,6 +50,8 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
     var onRename: (() -> Void)?
     var onSelectionChange: (() -> Void)?
     var onQuickLook: (() -> Void)?
+    var onFocus: (() -> Void)?
+    var onSwitchPane: (() -> Void)?
     weak var dropHandler: FolderDropHandler?
     var onSortChange: ((FennecCore.SortOrder) -> Void)?
     var sortOrder = FennecCore.SortOrder()
@@ -71,6 +88,8 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         tableView.doubleAction = #selector(rowDoubleClicked(_:))
         tableView.onRename = { [weak self] in self?.onRename?() }
         tableView.onQuickLook = { [weak self] in self?.onQuickLook?() }
+        tableView.onSwitchPane = { [weak self] in self?.onSwitchPane?() }
+        tableView.onFocus = { [weak self] in self?.onFocus?() }
         tableView.registerForDraggedTypes([.fileURL])
         tableView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         tableView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: false)

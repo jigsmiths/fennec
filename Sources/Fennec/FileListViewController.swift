@@ -6,6 +6,12 @@ final class FileTableView: NSTableView {
     var onQuickLook: (() -> Void)?
     var onSwitchPane: (() -> Void)?
     var onFocus: (() -> Void)?
+    /// A right-click on a row, or on empty space (-1).
+    var onMenu: ((Int) -> NSMenu?)?
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        onMenu?(row(at: convert(event.locationInWindow, from: nil)))
+    }
 
     override func keyDown(with event: NSEvent) {
         if !handleFolderKey(event, onRename: onRename, onQuickLook: onQuickLook, onSwitchPane: onSwitchPane) {
@@ -53,6 +59,7 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
     var onFocus: (() -> Void)?
     var onSwitchPane: (() -> Void)?
     weak var dropHandler: FolderDropHandler?
+    var onContextMenu: (() -> NSMenu?)?
     var onSortChange: ((FennecCore.SortOrder) -> Void)?
     var sortOrder = FennecCore.SortOrder()
 
@@ -90,6 +97,7 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         tableView.onQuickLook = { [weak self] in self?.onQuickLook?() }
         tableView.onSwitchPane = { [weak self] in self?.onSwitchPane?() }
         tableView.onFocus = { [weak self] in self?.onFocus?() }
+        tableView.onMenu = { [weak self] row in self?.contextMenu(at: row) }
         tableView.registerForDraggedTypes([.fileURL])
         tableView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         tableView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: false)
@@ -157,6 +165,23 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         InlineRename.begin(
             on: field, name: rows[index].name, isFolder: rows[index].isBrowsable,
             returnFocusTo: tableView, onEnd: onEnd)
+    }
+
+    func frame(ofItemAt index: Int) -> NSRect? {
+        guard index < rows.count else { return nil }
+        return view.convert(tableView.rect(ofRow: index), from: tableView)
+    }
+
+    /// Like Finder: right-clicking an unselected row selects just it, and empty space clears the selection.
+    /// Focus first, so in split view the clicked pane becomes active before its selection changes.
+    private func contextMenu(at row: Int) -> NSMenu? {
+        focus()
+        if row < 0 {
+            tableView.deselectAll(nil)
+        } else if !tableView.selectedRowIndexes.contains(row) {
+            tableView.selectRowIndexes([row], byExtendingSelection: false)
+        }
+        return onContextMenu?()
     }
 
     @objc private func rowDoubleClicked(_ sender: Any?) {

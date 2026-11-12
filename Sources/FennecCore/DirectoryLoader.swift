@@ -20,6 +20,12 @@ public enum DirectoryLoader {
         return urls.map { entry(for: $0, keys: keySet, inCloud: inCloud) }
     }
 
+    /// One item on its own, e.g. the folder being shown.
+    public static func entry(at url: URL) -> FileEntry {
+        let inCloud = isInICloud(url)
+        return entry(for: url, keys: Set(inCloud ? baseKeys + cloudKeys : baseKeys), inCloud: inCloud)
+    }
+
     public static func itemCount(at directory: URL, includeHidden: Bool) -> Int {
         let urls = try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: nil,

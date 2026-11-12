@@ -322,6 +322,39 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         operations.deleteImmediately(selectedURLs)
     }
 
+    @objc func openWith(_ sender: NSMenuItem) {
+        guard let app = sender.representedObject as? URL, !selectedURLs.isEmpty else { return }
+        NSWorkspace.shared.open(selectedURLs, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    /// The selection, or the folder being shown when nothing is selected, like Finder.
+    private var selectedOrFolderURLs: [URL] {
+        let selected = selectedURLs
+        return selected.isEmpty ? folder.currentDirectory.map { [$0] } ?? [] : selected
+    }
+
+    @objc func getInfo(_ sender: Any?) {
+        let entries = folder.selectedEntries
+        InfoWindowController.show(entries.isEmpty
+            ? folder.currentDirectory.map { [DirectoryLoader.entry(at: $0)] } ?? []
+            : entries)
+    }
+
+    @objc func copyPath(_ sender: Any?) {
+        FileClipboard.writePaths(selectedOrFolderURLs)
+    }
+
+    @objc func copyEnclosingFolderPath(_ sender: Any?) {
+        FileClipboard.writePaths(FileInfoFormatting.enclosingFolders(of: selectedOrFolderURLs))
+    }
+
+    /// File > Share…, anchored on the first selected item.
+    @objc func share(_ sender: Any?) {
+        guard !selectedURLs.isEmpty else { return }
+        let (view, rect) = folder.shareAnchor()
+        NSSharingServicePicker(items: selectedURLs.map { $0 as NSURL }).show(relativeTo: rect, of: view, preferredEdge: .minY)
+    }
+
     @objc func renameSelection(_ sender: Any?) {
         folder.renameSelection()
     }
@@ -358,8 +391,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(goForward(_:)): return history.canGoForward
         case #selector(goUp(_:)): return history.canGoUp
         case #selector(toggleQuickLook(_:)): return !folder.selectedEntries.isEmpty
-        case #selector(copy(_:)), #selector(cut(_:)), #selector(moveToTrash(_:)), #selector(deleteImmediately(_:)):
+        case #selector(copy(_:)), #selector(cut(_:)), #selector(moveToTrash(_:)), #selector(deleteImmediately(_:)),
+             #selector(share(_:)), #selector(openWith(_:)):
             return !folder.selectedEntries.isEmpty
+        case #selector(getInfo(_:)), #selector(copyPath(_:)), #selector(copyEnclosingFolderPath(_:)):
+            return !selectedOrFolderURLs.isEmpty
         case #selector(copyToOtherPane(_:)), #selector(moveToOtherPane(_:)):
             return panes.isSplit && !folder.selectedEntries.isEmpty
         case #selector(renameSelection(_:)): return folder.selectedEntries.count == 1

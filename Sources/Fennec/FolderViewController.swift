@@ -12,7 +12,11 @@ protocol FolderContentView: NSViewController {
     var onFocus: (() -> Void)? { get set }
     var onSwitchPane: (() -> Void)? { get set }
     var dropHandler: FolderDropHandler? { get set }
+    /// A right-click, after the view has taken focus and selected what was clicked.
+    var onContextMenu: (() -> NSMenu?)? { get set }
     var selectedIndexes: IndexSet { get }
+    /// Where an item is, in this view's coordinates, for anchoring popovers such as the share picker.
+    func frame(ofItemAt index: Int) -> NSRect?
     func display(_ rows: [FileEntry], selecting: IndexSet, keepScroll: Bool)
     func focus()
     /// Key events forwarded from the Quick Look panel, so arrow keys keep moving the selection.
@@ -150,6 +154,10 @@ final class FolderViewController: NSViewController {
             self.onSelectionChange?(self.selectedEntries)
         }
         child.onQuickLook = { [weak self] in self?.onQuickLook?() }
+        child.onContextMenu = { [weak self] in
+            guard let self else { return nil }
+            return FolderContextMenu.make(for: self.selectedEntries)
+        }
 
         addChild(child)
         child.view.translatesAutoresizingMaskIntoConstraints = false
@@ -168,6 +176,12 @@ final class FolderViewController: NSViewController {
 
     func focus() {
         content.focus()
+    }
+
+    /// The view and rect to show the share picker from: the first selected item, or the whole folder view.
+    func shareAnchor() -> (NSView, NSRect) {
+        let rect = content.selectedIndexes.first.flatMap(content.frame(ofItemAt:))
+        return (content.view, rect ?? content.view.bounds)
     }
 
     // MARK: Loading

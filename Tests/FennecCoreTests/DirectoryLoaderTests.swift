@@ -55,6 +55,45 @@ struct DirectoryLoaderTests {
         #expect(!entry.isBrowsable)
     }
 
+    @Test func followsSymlinksToFolders() throws {
+        let dir = try TempDir()
+        try dir.folder("Target")
+        let link = dir.url.appendingPathComponent("Link")
+        try FileManager.default.createSymbolicLink(
+            at: link, withDestinationURL: dir.url.appendingPathComponent("Target"))
+
+        let entries = try DirectoryLoader.loadSync(dir.url)
+        let entry = try #require(entries.first { $0.name == "Link" })
+
+        #expect(entry.isBrowsable)
+        #expect(entry.path == link.standardizedFileURL.path)
+    }
+
+    @Test func listsAFolderThroughALink() throws {
+        let dir = try TempDir()
+        try dir.folder("Target")
+        try dir.file("Target/a.txt")
+        let link = dir.url.appendingPathComponent("Link")
+        try FileManager.default.createSymbolicLink(
+            at: link, withDestinationURL: dir.url.appendingPathComponent("Target"))
+
+        let entries = try DirectoryLoader.loadSync(link)
+
+        #expect(entries.map(\.path) == [link.appendingPathComponent("a.txt").standardizedFileURL.path])
+        #expect(DirectoryLoader.itemCount(at: link, includeHidden: false) == 1)
+    }
+
+    @Test func brokenSymlinkIsAFile() throws {
+        let dir = try TempDir()
+        try FileManager.default.createSymbolicLink(
+            at: dir.url.appendingPathComponent("Dangling"),
+            withDestinationURL: dir.url.appendingPathComponent("missing"))
+
+        let entry = try #require(try DirectoryLoader.loadSync(dir.url).first)
+
+        #expect(!entry.isDirectory)
+    }
+
     @Test func itemCountSkipsHiddenFilesUnlessShown() throws {
         let dir = try TempDir()
         try dir.file("a.txt")

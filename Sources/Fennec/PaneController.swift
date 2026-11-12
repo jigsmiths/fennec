@@ -126,7 +126,7 @@ final class PaneController: NSViewController {
     func goUp() {
         guard history.canGoUp else { return }
         let current = history.current
-        navigate(to: current.deletingLastPathComponent(), selecting: current)
+        navigate(to: ICloudDrive.parent(of: current), selecting: current)
     }
 
     private func show(_ url: URL, selecting selection: URL?) {

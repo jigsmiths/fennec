@@ -1,4 +1,5 @@
 import AppKit
+import FennecCore
 
 @MainActor
 final class PathBarView: NSView {
@@ -62,10 +63,18 @@ final class PathBarView: NSView {
 
     static func segments(for url: URL) -> [Segment] {
         let path = url.standardizedFileURL.path
-        let anchor = anchor(for: path)
-        var segments = [anchor]
-        let rest = path.dropFirst(anchor.url.standardizedFileURL.path.count)
-        var current = anchor.url
+        var segments: [Segment]
+        var current: URL
+        if let library = ICloudDrive.library(containing: url) {
+            segments = [Segment(name: "iCloud Drive", symbol: "icloud", url: Places.iCloudDrive),
+                        Segment(name: library.name, symbol: nil, url: library.url)]
+            current = library.url
+        } else {
+            let anchor = anchor(for: path)
+            segments = [anchor]
+            current = anchor.url
+        }
+        let rest = path.dropFirst(current.standardizedFileURL.path.count)
         for component in rest.split(separator: "/") {
             current = current.appendingPathComponent(String(component), isDirectory: true)
             segments.append(Segment(name: String(component), symbol: nil, url: current))

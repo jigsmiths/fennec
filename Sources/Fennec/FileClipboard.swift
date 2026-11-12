@@ -17,6 +17,14 @@ enum FileClipboard {
         }
     }
 
+    /// Paths as plain text, one per line, for pasting into a terminal or editor.
+    static func writePaths(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(urls.map(\.path).joined(separator: "\n"), forType: .string)
+    }
+
     static func read() -> (urls: [URL], isCut: Bool) {
         let pasteboard = NSPasteboard.general
         let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: fileURLsOnly) as? [URL] ?? []

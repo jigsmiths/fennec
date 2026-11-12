@@ -8,6 +8,12 @@ final class GridCollectionView: NSCollectionView {
     var onQuickLook: (() -> Void)?
     var onSwitchPane: (() -> Void)?
     var onFocus: (() -> Void)?
+    /// A right-click on a tile, or on empty space (nil).
+    var onMenu: ((IndexPath?) -> NSMenu?)?
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        onMenu?(indexPathForItem(at: convert(event.locationInWindow, from: nil)))
+    }
 
     /// Whether selected tiles use the strong highlight: only while this grid has focus in the key window,
     /// like a table's selection.
@@ -76,6 +82,7 @@ final class GridViewController: NSViewController, FolderContentView, NSCollectio
     var onFocus: (() -> Void)?
     var onSwitchPane: (() -> Void)?
     weak var dropHandler: FolderDropHandler?
+    var onContextMenu: (() -> NSMenu?)?
 
     private let collectionView = GridCollectionView()
     private let scrollView = NSScrollView()
@@ -100,6 +107,7 @@ final class GridViewController: NSViewController, FolderContentView, NSCollectio
         collectionView.onQuickLook = { [weak self] in self?.onQuickLook?() }
         collectionView.onSwitchPane = { [weak self] in self?.onSwitchPane?() }
         collectionView.onFocus = { [weak self] in self?.onFocus?() }
+        collectionView.onMenu = { [weak self] indexPath in self?.contextMenu(at: indexPath) }
         collectionView.registerForDraggedTypes([.fileURL])
         collectionView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         collectionView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: false)
@@ -155,6 +163,27 @@ final class GridViewController: NSViewController, FolderContentView, NSCollectio
         InlineRename.begin(
             on: field, name: rows[index].name, isFolder: rows[index].isBrowsable,
             returnFocusTo: collectionView, onEnd: onEnd)
+    }
+
+    func frame(ofItemAt index: Int) -> NSRect? {
+        guard index < rows.count,
+              let frame = collectionView.layoutAttributesForItem(at: IndexPath(item: index, section: 0))?.frame
+        else { return nil }
+        return view.convert(frame, from: collectionView)
+    }
+
+    /// Like Finder: right-clicking an unselected tile selects just it, and empty space clears the selection.
+    /// Setting the selection in code doesn't call the delegate, so report the change here.
+    private func contextMenu(at indexPath: IndexPath?) -> NSMenu? {
+        focus()
+        let selection = collectionView.selectionIndexPaths
+        if let indexPath {
+            if !selection.contains(indexPath) { collectionView.selectionIndexPaths = [indexPath] }
+        } else {
+            collectionView.selectionIndexPaths = []
+        }
+        if collectionView.selectionIndexPaths != selection { onSelectionChange?() }
+        return onContextMenu?()
     }
 
     // MARK: Drag and drop

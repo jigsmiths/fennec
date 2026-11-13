@@ -13,17 +13,16 @@ public struct FileOperationRunner: Sendable {
         public let step: UndoStep?
     }
 
-    private let trashItem: @Sendable (URL) throws -> URL
+    /// Moves the items to the Trash and returns where each one ended up, in the same order.
+    private let trashItems: @Sendable ([URL]) throws -> [URL]
 
     /// `trash` is injectable so tests don't fill the real Trash.
-    public init(trash: @escaping @Sendable (URL) throws -> URL = FileOperationRunner.systemTrash) {
-        trashItem = trash
+    public init(trash: @escaping @Sendable ([URL]) throws -> [URL] = FinderTrash.trash) {
+        trashItems = trash
     }
 
-    public static func systemTrash(_ url: URL) throws -> URL {
-        var result: NSURL?
-        try FileManager.default.trashItem(at: url, resultingItemURL: &result)
-        return (result as URL?) ?? url
+    private func trashItem(_ url: URL) throws -> URL {
+        try trashItems([url])[0]
     }
 
     // MARK: Copy and move
@@ -158,7 +157,8 @@ public struct FileOperationRunner: Sendable {
     // MARK: Trash, rename, new folder
 
     public func trash(_ urls: [URL]) throws -> [UndoStep] {
-        try urls.map { url in .trashed(original: url, trashed: try trashItem(url)) }
+        guard !urls.isEmpty else { return [] }
+        return zip(urls, try trashItems(urls)).map { .trashed(original: $0, trashed: $1) }
     }
 
     public func rename(_ url: URL, to newName: String) throws -> Renamed {

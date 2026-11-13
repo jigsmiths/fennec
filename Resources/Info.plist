@@ -20,6 +20,8 @@
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>15.0</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Fennec asks Finder to move items to the Trash, so Put Back works and iCloud items can be trashed.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>NSHighResolutionCapable</key>

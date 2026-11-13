@@ -4,6 +4,8 @@ import FennecCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windows: [MainWindowController] = []
+    /// Built at launch and shared by every window, so Find is instant anywhere under home.
+    private let homeIndex: FinderIndex? = Bench.enabled ? nil : FinderIndex(root: Places.home, includeHidden: false)
     /// Off when launched on a folder from the command line (bench, test runs), so those never replace
     /// the real session.
     private var savesSession = true
@@ -23,6 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if windows.isEmpty { openWindow(WindowDefaults.window(at: Places.home)) }
         }
         NSApp.activate()
+        // Low priority, after the windows, so it never slows startup.
+        homeIndex?.refreshIfNeeded(priority: .utility)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -57,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func openWindow(_ state: WindowState) {
         let controller = MainWindowController(state: state)
+        controller.sharedFinderIndex = homeIndex
         controller.onClose = { [weak self, weak controller] in
             self?.windows.removeAll { $0 === controller }
             self?.saveSession()

@@ -28,6 +28,8 @@ enum MainMenu {
             item("Get Info", #selector(MainWindowController.getInfo(_:)), "i"),
             item("Share…", #selector(MainWindowController.share(_:))),
             .separator(),
+            item("Find…", #selector(MainWindowController.findFiles(_:)), "f"),
+            .separator(),
             item("Move to Trash", #selector(MainWindowController.moveToTrash(_:)), backspace),
             item("Delete Immediately…", #selector(MainWindowController.deleteImmediately(_:)), backspace,
                  [.command, .option]),

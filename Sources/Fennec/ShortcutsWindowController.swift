@@ -16,6 +16,12 @@ final class ShortcutsWindowController: NSWindowController {
         ("Even out the panes", "Double-click the divider"),
     ]
 
+    private static let finderKeys: [(String, String)] = [
+        ("Show in folder", ShortcutLabel.text(key: "\r", modifiers: [])),
+        ("Open", ShortcutLabel.text(key: "\r", modifiers: [.command])),
+        ("Close", ShortcutLabel.text(key: "\u{1B}", modifiers: [])),
+    ]
+
     /// Items AppKit adds to the Edit menu on its own; they aren't Fennec's shortcuts.
     private static let systemActions: Set<Selector> = [
         Selector(("startDictation:")), #selector(NSApplication.orderFrontCharacterPalette(_:)),
@@ -105,6 +111,7 @@ final class ShortcutsWindowController: NSWindowController {
             if !rows.isEmpty { groups.append((menu.title, rows)) }
         }
         groups.append(("In the File List", folderKeys))
+        groups.append(("In Find", finderKeys))
         return groups
     }
 

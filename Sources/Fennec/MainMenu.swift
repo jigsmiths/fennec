@@ -26,6 +26,8 @@ enum MainMenu {
             item("Rename", #selector(MainWindowController.renameSelection(_:))),
             item("Quick Look", #selector(MainWindowController.toggleQuickLook(_:)), "y"),
             .separator(),
+            item("Find…", #selector(MainWindowController.findFiles(_:)), "f"),
+            .separator(),
             item("Move to Trash", #selector(MainWindowController.moveToTrash(_:)), backspace),
             item("Delete Immediately…", #selector(MainWindowController.deleteImmediately(_:)), backspace,
                  [.command, .option]),

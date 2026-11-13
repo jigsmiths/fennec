@@ -17,6 +17,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var operations: OperationsController!
     private let operationsStatus = OperationsStatusView()
     private var operationsItem: NSToolbarItem?
+    private var finder: FileFinderController?
+    private var finderIndex: FinderIndex?
+    /// The app-wide index of home, if there is one.
+    var sharedFinderIndex: FinderIndex?
 
     private static let viewModeID = NSToolbarItem.Identifier("viewMode")
     private static let previewToggleID = NSToolbarItem.Identifier("previewToggle")
@@ -202,6 +206,40 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     @objc func openSelection(_ sender: Any?) {
         folder.openSelection()
+    }
+
+    /// Fuzzy-finds everything under the active pane's folder.
+    @objc func findFiles(_ sender: Any?) {
+        guard let window else { return }
+        finder?.close()
+        let pane = panes.active
+        let folder = pane.currentFolder, includeHidden = panes.showsHidden
+        // The app's home index covers most searches; anything else gets this window's own index, kept for
+        // the last folder searched so searching it (or inside it) again is instant.
+        let index: FinderIndex
+        let relativePath: String
+        if let shared = sharedFinderIndex, let path = shared.relativePath(of: folder, includeHidden: includeHidden) {
+            (index, relativePath) = (shared, path)
+        } else if let cached = finderIndex, let path = cached.relativePath(of: folder, includeHidden: includeHidden) {
+            (index, relativePath) = (cached, path)
+        } else {
+            index = FinderIndex(root: folder, includeHidden: includeHidden)
+            finderIndex = index
+            relativePath = ""
+        }
+        let finder = FileFinderController(index: index, folder: relativePath)
+        finder.onChoose = { [weak pane] url, isBrowsable, open in
+            guard let pane else { return }
+            if !open {
+                pane.navigate(to: url.deletingLastPathComponent(), selecting: url)
+            } else if isBrowsable {
+                pane.navigate(to: url)
+            } else {
+                NSWorkspace.shared.open(url)
+            }
+        }
+        finder.show(over: window)
+        self.finder = finder
     }
 
     // MARK: View

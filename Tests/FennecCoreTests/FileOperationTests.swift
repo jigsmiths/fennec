@@ -6,11 +6,21 @@ import Testing
 private func makeRunner(_ root: TempDir) throws -> FileOperationRunner {
     let trash = root.url.appendingPathComponent(".test-trash", isDirectory: true)
     try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
-    return FileOperationRunner(trash: { url in
-        let target = UniqueName.available(for: url.lastPathComponent, in: trash)
-        try FileManager.default.moveItem(at: url, to: target)
-        return target
+    return FileOperationRunner(trash: { urls in
+        try urls.map { url in
+            let target = UniqueName.available(for: url.lastPathComponent, in: trash)
+            try FileManager.default.moveItem(at: url, to: target)
+            return target
+        }
     })
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    func increment() { lock.withLock { count += 1 } }
+    var value: Int { lock.withLock { count } }
 }
 
 private func write(_ text: String, to url: URL) throws {
@@ -238,6 +248,22 @@ struct TrashRenameUndoTests {
         #expect(!exists(file))
         try runner.undo(steps)
         #expect(try read(file) == "one")
+    }
+
+    @Test func trashesASelectionInOneCall() throws {
+        let root = try TempDir()
+        let files = ["a.txt", "b.txt", "c.txt"].map { root.url.appendingPathComponent($0) }
+        for file in files { try write("x", to: file) }
+        let calls = Counter()
+        let runner = FileOperationRunner(trash: { urls in
+            calls.increment()
+            return urls.map { URL(filePath: "/Trash/\($0.lastPathComponent)") }
+        })
+
+        let steps = try runner.trash(files)
+
+        #expect(calls.value == 1)
+        #expect(steps == files.map { .trashed(original: $0, trashed: URL(filePath: "/Trash/\($0.lastPathComponent)")) })
     }
 
     @Test func renameValidatesNames() throws {

@@ -74,6 +74,41 @@ struct FinderTrashTests {
         }
     }
 
+    @Test func readsTrashListingAsFileURLs() {
+        let urls = FinderTrash.itemURLs(from: "file:///Users/me/.Trash/a%20b.txt\nfile:///Users/me/.Trash/Folder/\n")
+
+        #expect(urls.map(\.path) == ["/Users/me/.Trash/a b.txt", "/Users/me/.Trash/Folder"])
+    }
+
+    @Test func emptyTrashListsNothing() {
+        #expect(FinderTrash.itemURLs(from: "\n").isEmpty)
+    }
+
+    @Test func recognisesTheTrashFolder() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        #expect(FinderTrash.isTrash(home.appendingPathComponent(".Trash/")))
+        #expect(!FinderTrash.isTrash(home.appendingPathComponent(".Trash/Folder")))
+    }
+
+    @Test func knowsWhichFoldersAreInsideTheHomeTrash() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        #expect(FinderTrash.isInsideHomeTrash(home.appendingPathComponent(".Trash/Folder/Sub")))
+        #expect(!FinderTrash.isInsideHomeTrash(home.appendingPathComponent(".Trash")))
+        #expect(!FinderTrash.isInsideHomeTrash(home.appendingPathComponent(".Trashy/Folder")))
+    }
+
+    @Test func onlyPrivacyBlocksInsideTheTrashNeedFullDiskAccess() {
+        let inTrash = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash/Folder")
+        func readError(_ posix: Int32) -> Error {
+            NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoPermissionError,
+                    userInfo: [NSUnderlyingErrorKey: NSError(domain: NSPOSIXErrorDomain, code: Int(posix))])
+        }
+
+        #expect(FinderTrash.needsFullDiskAccess(readError(EPERM), opening: inTrash))
+        #expect(!FinderTrash.needsFullDiskAccess(readError(EACCES), opening: inTrash))
+        #expect(!FinderTrash.needsFullDiskAccess(readError(EPERM), opening: URL(filePath: "/tmp/Folder")))
+    }
+
     @Test func deniedAutomationGetsItsOwnError() {
         let stderr = "0:120: execution error: Not authorized to send Apple events to Finder. (-1743)\n"
 

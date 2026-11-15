@@ -52,6 +52,7 @@ final class OperationsController {
                     },
                     progress: { job.update($0) },
                     isCancelled: { job.isCancelled })
+                rememberTrashed(result.steps)
                 registerUndo(result.steps, name: mode == .copy ? "Copy" : "Move")
                 onPlaced?(result.placed)
             } catch FileOperationError.cancelled {
@@ -141,7 +142,51 @@ final class OperationsController {
         Task {
             do {
                 let steps = try await BlockingIO.run { try runner.trash(urls) }
+                rememberTrashed(steps)
                 registerUndo(steps, name: "Move to Trash")
+            } catch {
+                showError(error)
+            }
+        }
+    }
+
+    private func rememberTrashed(_ steps: [UndoStep]) {
+        for case .trashed(let original, let trashed) in steps {
+            TrashLedger.shared.record(original: original, trashed: trashed)
+        }
+    }
+
+    func putBack(_ urls: [URL]) {
+        let items = urls.compactMap { url in TrashLedger.shared.original(of: url).map { (trashed: url, original: $0) } }
+        guard !items.isEmpty else { return }
+        let runner = runner
+        Task {
+            do {
+                let steps = try await BlockingIO.run { try runner.putBack(items) }
+                registerUndo(steps, name: "Put Back")
+                onPlaced?(items.map(\.original))
+            } catch {
+                showError(error)
+            }
+        }
+    }
+
+    func emptyTrash() {
+        guard let window else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "Permanently erase the items in the Trash?"
+        alert.informativeText = "This can't be undone."
+        alert.addButton(withTitle: "Empty Trash")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons.first?.hasDestructiveAction = true
+        Task {
+            guard await alert.beginSheetModal(for: window) == .alertFirstButtonReturn else { return }
+            do {
+                try await BlockingIO.run {
+                    try FinderTrash.empty()
+                    TrashLedger.shared.prune()
+                }
             } catch {
                 showError(error)
             }

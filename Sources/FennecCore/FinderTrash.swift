@@ -52,6 +52,41 @@ public enum FinderTrash {
         try trash(urls, finder: askFinder, system: systemTrash)
     }
 
+    /// The Trash as the sidebar and panes show it. Its real contents span several folders.
+    public static let folder = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".Trash", isDirectory: true)
+
+    public static func isTrash(_ url: URL) -> Bool {
+        url.standardizedFileURL.path == folder.standardizedFileURL.path
+    }
+
+    /// Folders here can't be listed without Full Disk Access.
+    public static func isInsideHomeTrash(_ url: URL) -> Bool {
+        url.standardizedFileURL.path.hasPrefix(folder.standardizedFileURL.path + "/")
+    }
+
+    /// macOS privacy blocks come back as EPERM; ordinary folder permissions are EACCES.
+    public static func needsFullDiskAccess(_ error: Error, opening url: URL) -> Bool {
+        guard isInsideHomeTrash(url) else { return false }
+        let underlying = (error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError
+        return underlying?.domain == NSPOSIXErrorDomain && underlying?.code == Int(EPERM)
+    }
+
+    /// Everything in the Trash, from every trash folder (home, iCloud Drive, other disks). Listing ~/.Trash
+    /// directly needs Full Disk Access, but Finder can list it.
+    public static func items() throws -> [URL] {
+        itemURLs(from: try runFinder("tell application \"Finder\" to set found to URL of every item of trash\n"
+            + "set AppleScript's text item delimiters to linefeed\nfound as text", arguments: []))
+    }
+
+    static func itemURLs(from output: String) -> [URL] {
+        output.split(separator: "\n").compactMap { URL(string: String($0)) }.filter(\.isFileURL)
+    }
+
+    public static func empty() throws {
+        _ = try runFinder("tell application \"Finder\" to empty trash", arguments: [])
+    }
+
     /// Finder refuses to trash symlinks, so those take the system call, which moves the link itself.
     static func trash(
         _ urls: [URL], finder: ([URL]) throws -> [URL], system: (URL) throws -> URL
@@ -74,9 +109,13 @@ public enum FinderTrash {
 
     private static func askFinder(_ urls: [URL]) throws -> [URL] {
         guard !urls.isEmpty else { return [] }
+        return try trashedURLs(from: runFinder(script, arguments: arguments(for: urls)), count: urls.count)
+    }
+
+    private static func runFinder(_ script: String, arguments: [String]) throws -> String {
         let process = Process()
         process.executableURL = URL(filePath: "/usr/bin/osascript")
-        process.arguments = ["-e", script] + arguments(for: urls)
+        process.arguments = ["-e", script] + arguments
         let output = Pipe()
         let errors = Pipe()
         process.standardOutput = output
@@ -86,7 +125,7 @@ public enum FinderTrash {
         let stderr = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         process.waitUntilExit()
         guard process.terminationStatus == 0 else { throw failure(fromStderr: stderr) }
-        return try trashedURLs(from: stdout, count: urls.count)
+        return stdout
     }
 
     static func trashedURLs(from output: String, count: Int) throws -> [URL] {

@@ -1,3 +1,4 @@
+import FennecCore
 import Foundation
 
 struct Place {
@@ -23,6 +24,7 @@ enum Places {
             places.append(Place(name: "iCloud Drive", symbol: "icloud", url: iCloudDrive))
         }
         places.append(Place(name: "Applications", symbol: "square.grid.2x2", url: URL(filePath: "/Applications")))
+        places.append(Place(name: "Trash", symbol: "trash", url: FinderTrash.folder))
         return places
     }
 

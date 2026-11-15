@@ -360,6 +360,36 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         operations.deleteImmediately(selectedURLs)
     }
 
+    private var inTrash: Bool { folder.currentDirectory.map(FinderTrash.isTrash) ?? false }
+
+    /// Only items Fennec trashed can go back: Finder's own record of the rest needs Full Disk Access.
+    private var canPutBack: Bool {
+        inTrash && !selectedURLs.isEmpty && selectedURLs.allSatisfy { TrashLedger.shared.original(of: $0) != nil }
+    }
+
+    @objc func putBack(_ sender: Any?) {
+        operations.putBack(selectedURLs)
+    }
+
+    @objc func moveTo(_ sender: Any?) {
+        let urls = selectedURLs
+        guard !urls.isEmpty, let window else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.prompt = "Move"
+        panel.message = urls.count == 1 ? "Move “\(urls[0].lastPathComponent)” to:" : "Move \(urls.count) items to:"
+        Task {
+            guard await panel.beginSheetModal(for: window) == .OK, let destination = panel.url else { return }
+            operations.transfer(urls, to: destination, mode: .move)
+        }
+    }
+
+    @objc func emptyTrash(_ sender: Any?) {
+        operations.emptyTrash()
+    }
+
     @objc func openWith(_ sender: NSMenuItem) {
         guard let app = sender.representedObject as? URL, !selectedURLs.isEmpty else { return }
         NSWorkspace.shared.open(selectedURLs, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
@@ -429,16 +459,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(goForward(_:)): return history.canGoForward
         case #selector(goUp(_:)): return history.canGoUp
         case #selector(toggleQuickLook(_:)): return !folder.selectedEntries.isEmpty
-        case #selector(copy(_:)), #selector(cut(_:)), #selector(moveToTrash(_:)), #selector(deleteImmediately(_:)),
-             #selector(share(_:)), #selector(openWith(_:)):
+        case #selector(putBack(_:)): return canPutBack
+        // Renaming or adding items inside the Trash would break Put Back.
+        case #selector(moveToTrash(_:)): return !inTrash && !folder.selectedEntries.isEmpty
+        case #selector(newFolder(_:)): return !inTrash
+        case #selector(copy(_:)), #selector(cut(_:)), #selector(deleteImmediately(_:)),
+             #selector(share(_:)), #selector(openWith(_:)), #selector(moveTo(_:)):
             return !folder.selectedEntries.isEmpty
         case #selector(getInfo(_:)), #selector(copyPath(_:)), #selector(copyEnclosingFolderPath(_:)):
             return !selectedOrFolderURLs.isEmpty
         case #selector(copyToOtherPane(_:)), #selector(moveToOtherPane(_:)):
             return panes.isSplit && !folder.selectedEntries.isEmpty
-        case #selector(renameSelection(_:)): return folder.selectedEntries.count == 1
+        case #selector(renameSelection(_:)): return !inTrash && folder.selectedEntries.count == 1
         case #selector(paste(_:)), #selector(pasteAsMove(_:)):
-            return FileClipboard.hasFiles && folder.currentDirectory != nil
+            return !inTrash && FileClipboard.hasFiles && folder.currentDirectory != nil
         case #selector(toggleSplit(_:)):
             menuItem.state = panes.isSplit ? .on : .off
         case #selector(toggleHiddenFiles(_:)):

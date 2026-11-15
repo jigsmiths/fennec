@@ -12,6 +12,9 @@ public enum DirectoryLoader {
     ]
 
     public static func loadSync(_ directory: URL) throws -> [FileEntry] {
+        if FinderTrash.isTrash(directory) {
+            return try FinderTrash.items().map(entry(at:))
+        }
         let inCloud = isInICloud(directory)
         let keys = inCloud ? baseKeys + cloudKeys : baseKeys
         var urls = try FileManager.default.contentsOfDirectory(

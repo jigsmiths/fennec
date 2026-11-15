@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate()
         // Low priority, after the windows, so it never slows startup.
         homeIndex?.refreshIfNeeded(priority: .utility)
+        Task.detached(priority: .utility) { TrashLedger.shared.prune() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

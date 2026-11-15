@@ -46,6 +46,29 @@ enum FolderContextMenu {
         return menu
     }
 
+    /// The menu inside the Trash, where items can only be restored, moved out or deleted.
+    static func makeForTrash(_ entries: [FileEntry]) -> NSMenu {
+        let menu = NSMenu()
+        if entries.isEmpty {
+            menu.addItem(item("Empty Trash…", #selector(MainWindowController.emptyTrash(_:))))
+            return menu
+        }
+        add(to: menu, [
+            item("Open", #selector(MainWindowController.openSelection(_:))),
+            item("Quick Look", #selector(MainWindowController.toggleQuickLook(_:))),
+            item("Get Info", #selector(MainWindowController.getInfo(_:))),
+            .separator(),
+            item("Put Back", #selector(MainWindowController.putBack(_:))),
+            item("Move To…", #selector(MainWindowController.moveTo(_:))),
+            .separator(),
+            item("Copy", #selector(MainWindowController.copy(_:))),
+            item("Copy as Pathname", #selector(MainWindowController.copyPath(_:))),
+            .separator(),
+            item("Delete Immediately…", #selector(MainWindowController.deleteImmediately(_:))),
+        ])
+        return menu
+    }
+
     /// The system Share menu: AirDrop, Messages, Mail and any share extensions.
     private static func shareItem(for entries: [FileEntry]) -> NSMenuItem {
         let picker = NSSharingServicePicker(items: entries.map { $0.url as NSURL })

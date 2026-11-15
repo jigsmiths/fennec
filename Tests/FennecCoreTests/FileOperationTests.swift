@@ -266,6 +266,37 @@ struct TrashRenameUndoTests {
         #expect(steps == files.map { .trashed(original: $0, trashed: URL(filePath: "/Trash/\($0.lastPathComponent)")) })
     }
 
+    @Test func putBackRestoresIntoMissingFolderAndUndoReturnsIt() throws {
+        let root = try TempDir()
+        let original = root.url.appendingPathComponent("gone/a.txt")
+        let trashed = root.url.appendingPathComponent(".test-trash/a.txt")
+        try write("one", to: trashed)
+        let runner = try makeRunner(root)
+
+        let steps = try runner.putBack([(trashed: trashed, original: original)])
+        #expect(try read(original) == "one")
+        #expect(!exists(trashed))
+
+        try runner.undo(steps)
+        #expect(try read(trashed) == "one")
+        #expect(!exists(original))
+    }
+
+    @Test func putBackRefusesToOverwrite() throws {
+        let root = try TempDir()
+        let original = root.url.appendingPathComponent("a.txt")
+        let trashed = root.url.appendingPathComponent(".test-trash/a.txt")
+        try write("new", to: original)
+        try write("old", to: trashed)
+        let runner = try makeRunner(root)
+
+        #expect(throws: FileOperationError.alreadyExists("a.txt")) {
+            try runner.putBack([(trashed: trashed, original: original)])
+        }
+        #expect(try read(original) == "new")
+        #expect(try read(trashed) == "old")
+    }
+
     @Test func renameValidatesNames() throws {
         let root = try TempDir()
         let file = root.url.appendingPathComponent("a.txt")

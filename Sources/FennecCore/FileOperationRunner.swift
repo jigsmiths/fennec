@@ -161,6 +161,21 @@ public struct FileOperationRunner: Sendable {
         return zip(urls, try trashItems(urls)).map { .trashed(original: $0, trashed: $1) }
     }
 
+    /// Moves trashed items back where they came from, recreating missing folders. Never replaces an item.
+    public func putBack(_ items: [(trashed: URL, original: URL)]) throws -> [UndoStep] {
+        if let taken = items.first(where: { FileItem.exists($0.original) }) {
+            throw FileOperationError.alreadyExists(taken.original.lastPathComponent)
+        }
+        var steps: [UndoStep] = []
+        for item in items {
+            try FileManager.default.createDirectory(
+                at: item.original.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileItem.move(item.trashed, to: item.original)
+            steps.append(.moved(from: item.trashed, to: item.original))
+        }
+        return steps
+    }
+
     public func rename(_ url: URL, to newName: String) throws -> Renamed {
         let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.contains(":") else {

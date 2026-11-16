@@ -83,11 +83,8 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         tableView.style = .inset
         tableView.rowHeight = 24
         tableView.allowsMultipleSelection = true
-        // Uniform resizing: with first-column-only, Name kept all the width and pushed the other columns off-screen.
-        tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
-        tableView.autosaveName = "FileListColumns"
-        tableView.autosaveTableColumns = true
-        // Set after autosave, which restores its own saved sort indicator; the folder's sort order is the source of truth.
+        // The other columns are fitted to their content, so Name absorbs all window resizing.
+        tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         tableView.sortDescriptors = [NSSortDescriptor(key: sortOrder.key.rawValue, ascending: sortOrder.ascending)]
         tableView.dataSource = self
         tableView.delegate = self
@@ -117,6 +114,7 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         loadViewIfNeeded()
         let update = {
             self.replaceRows(with: newRows)
+            self.fitColumnsToContent()
             self.tableView.selectRowIndexes(indexes, byExtendingSelection: false)
         }
         if keepScroll {
@@ -146,6 +144,54 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
             tableView.reloadData(forRowIndexes: IndexSet(0..<common),
                                  columnIndexes: IndexSet(0..<tableView.numberOfColumns))
         }
+    }
+
+    // MARK: Column widths
+
+    /// Sizes Size, Modified and Kind to their widest value, then lets Name fill whatever width is left.
+    private func fitColumnsToContent() {
+        let fitted = [SortKey.size, .modified, .kind].compactMap { key -> (NSTableColumn, CGFloat)? in
+            let index = tableView.column(withIdentifier: .init(key.rawValue))
+            return index >= 0 ? (tableView.tableColumns[index], fittedWidth(of: index)) : nil
+        }
+        for (column, width) in fitted { column.width = width }
+        tableView.sizeToFit()
+        // In a narrow pane sizeToFit squeezes every column once Name hits its minimum; scroll sideways instead.
+        for (column, width) in fitted where column.width < width { column.width = width }
+    }
+
+    private func fittedWidth(of index: Int) -> CGFloat {
+        let column = tableView.tableColumns[index]
+        guard let key = SortKey(rawValue: column.identifier.rawValue) else { return column.width }
+        let texts: Set<String>
+        var padding = TextCell.padding
+        var font = TextCell.font
+        switch key {
+        case .name:
+            texts = Set(rows.map(\.name))
+            padding = FileNameCell.padding
+            font = FileNameCell.font
+        case .size:
+            // Formatting every size is too slow for huge folders; these are the widest each unit gets.
+            texts = rows.contains { !$0.isBrowsable && $0.size != nil }
+                ? Set([999, 999_000, 999_500_000, 999_500_000_000].map(FileFormatting.bytes)) : []
+        case .modified:
+            // Files saved in the same minute share a label, so format each minute once.
+            var byMinute: [Int: Date] = [:]
+            for row in rows { if let date = row.modified { byMinute[Int(date.timeIntervalSince1970 / 60)] = date } }
+            texts = Set(byMinute.values.map(FileDisplay.date))
+        case .kind:
+            texts = Set(rows.map(FileDisplay.kind(for:)))
+        }
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let widest = texts.map { ($0 as NSString).size(withAttributes: attributes).width }.max() ?? 0
+        // Leave room for the sort indicator next to the title.
+        let header = column.headerCell.cellSize.width + 16
+        return max(ceil(widest) + padding, header, column.minWidth)
+    }
+
+    func tableView(_ tableView: NSTableView, sizeToFitWidthOfColumn column: Int) -> CGFloat {
+        fittedWidth(of: column)
     }
 
     func focus() {
@@ -263,6 +309,9 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
 @MainActor
 final class FileNameCell: NSTableCellView {
     static let reuseID = NSUserInterfaceItemIdentifier("name")
+    static let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+    /// Icon, gaps and the cloud badge around the label.
+    static let padding: CGFloat = 2 + 18 + 6 + 4 + 16 + 4
 
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
@@ -274,6 +323,7 @@ final class FileNameCell: NSTableCellView {
         imageView = icon
         textField = label
 
+        label.font = Self.font
         label.lineBreakMode = .byTruncatingMiddle
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         cloudBadge.image = NSImage(systemSymbolName: "icloud.and.arrow.down", accessibilityDescription: "Not downloaded")
@@ -309,6 +359,9 @@ final class FileNameCell: NSTableCellView {
 @MainActor
 final class TextCell: NSTableCellView {
     static let reuseID = NSUserInterfaceItemIdentifier("text")
+    static let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize + 1, weight: .regular)
+    /// Label insets plus a little breathing room before the next column.
+    static let padding: CGFloat = 2 + 4 + 8
 
     private let label = NSTextField(labelWithString: "")
 
@@ -317,7 +370,7 @@ final class TextCell: NSTableCellView {
         identifier = Self.reuseID
         textField = label
         label.textColor = .secondaryLabelColor
-        label.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize + 1, weight: .regular)
+        label.font = Self.font
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)

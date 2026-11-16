@@ -19,6 +19,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var operationsItem: NSToolbarItem?
     private var finder: FileFinderController?
     private var finderIndex: FinderIndex?
+    private var goToFolderPanel: GoToFolderController?
     /// The app-wide index of home, if there is one.
     var sharedFinderIndex: FinderIndex?
 
@@ -27,6 +28,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private static let splitToggleID = NSToolbarItem.Identifier("splitToggle")
     private static let operationsID = NSToolbarItem.Identifier("operations")
     private static let previewWidthSetKey = "previewWidthSet"
+    private static let goToFolderPathKey = "goToFolderLastPath"
 
     /// The active pane's folder view. Commands, the preview and Quick Look act on it.
     private var folder: FolderViewController { panes.active.folder }
@@ -202,6 +204,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     @objc func goToPlace(_ sender: NSMenuItem) {
         if let url = sender.representedObject as? URL { panes.active.navigate(to: url) }
+    }
+
+    /// Opens a typed path in the active pane, starting from the last path gone to.
+    @objc func goToFolder(_ sender: Any?) {
+        guard let window else { return }
+        goToFolderPanel?.close()
+        let pane = panes.active
+        let lastPath = UserDefaults.standard.string(forKey: Self.goToFolderPathKey) ?? ""
+        let panel = GoToFolderController(base: pane.currentFolder, includeHidden: panes.showsHidden, text: lastPath)
+        panel.onGo = { [weak pane] target in
+            guard let pane else { return }
+            switch target {
+            case .folder(let url):
+                pane.navigate(to: url)
+                UserDefaults.standard.set(PathEntry.abbreviated(url) + "/", forKey: Self.goToFolderPathKey)
+            case .item(let url):
+                pane.navigate(to: url.deletingLastPathComponent(), selecting: url)
+                UserDefaults.standard.set(PathEntry.abbreviated(url), forKey: Self.goToFolderPathKey)
+            case .notFound:
+                break
+            }
+        }
+        panel.show(over: window)
+        goToFolderPanel = panel
     }
 
     @objc func openSelection(_ sender: Any?) {

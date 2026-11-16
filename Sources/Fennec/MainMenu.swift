@@ -73,6 +73,7 @@ enum MainMenu {
             item("Back", #selector(MainWindowController.goBack(_:)), "["),
             item("Forward", #selector(MainWindowController.goForward(_:)), "]"),
             item("Enclosing Folder", #selector(MainWindowController.goUp(_:)), arrow(NSUpArrowFunctionKey)),
+            item("Go to Folder…", #selector(MainWindowController.goToFolder(_:)), "g", [.command, .shift]),
             .separator(),
         ]
         let shortcuts: [String: (String, NSEvent.ModifierFlags)] = [

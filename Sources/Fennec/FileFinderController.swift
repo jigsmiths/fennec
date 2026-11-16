@@ -304,7 +304,7 @@ extension FileFinderController: NSWindowDelegate {
 }
 
 /// A borderless panel that can take key focus and reports Escape and Cmd+Return.
-private final class FinderPanel: NSPanel {
+final class FinderPanel: NSPanel {
     var onCancel: (() -> Void)?
     var onCommandReturn: (() -> Void)?
 
@@ -334,7 +334,7 @@ private final class FinderPanel: NSPanel {
     }
 }
 
-private final class EmphasizedRowView: NSTableRowView {
+final class EmphasizedRowView: NSTableRowView {
     override var isEmphasized: Bool {
         get { true }
         set {}

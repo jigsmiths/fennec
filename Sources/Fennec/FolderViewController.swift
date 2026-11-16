@@ -76,7 +76,7 @@ final class FolderViewController: NSViewController {
     private var pendingRenamePath: String?
     private var openRenames = 0
     private var reloadAfterRename = false
-    private var watcher: DirectoryWatcher?
+    private var watchers: [DirectoryWatcher] = []
 
     init(viewMode: ViewMode, sortOrder: FennecCore.SortOrder, showHidden: Bool) {
         self.viewMode = viewMode
@@ -156,7 +156,8 @@ final class FolderViewController: NSViewController {
         child.onQuickLook = { [weak self] in self?.onQuickLook?() }
         child.onContextMenu = { [weak self] in
             guard let self else { return nil }
-            return FolderContextMenu.make(for: self.selectedEntries)
+            let inTrash = self.directory.map(FinderTrash.isTrash) ?? false
+            return inTrash ? FolderContextMenu.makeForTrash(self.selectedEntries) : FolderContextMenu.make(for: self.selectedEntries)
         }
 
         addChild(child)
@@ -190,7 +191,10 @@ final class FolderViewController: NSViewController {
     func show(_ url: URL, selecting selection: URL?, takeFocus: Bool = true) {
         loadViewIfNeeded()
         directory = url
-        watcher = DirectoryWatcher(url: url) { [weak self] in self?.folderChanged() }
+        // The Trash view also lists iCloud Drive's trash, which is a separate folder.
+        let watched = FinderTrash.isTrash(url)
+            ? [url, Places.iCloudDrive.deletingLastPathComponent().appendingPathComponent(".Trash")] : [url]
+        watchers = watched.map { DirectoryWatcher(url: $0) { [weak self] in self?.folderChanged() } }
         load(url, selecting: selection.map { [$0.standardizedFileURL.path] } ?? [], keepScroll: false)
         if takeFocus { content.focus() }
     }
@@ -238,7 +242,13 @@ final class FolderViewController: NSViewController {
             case .failure(let error):
                 self.allEntries = []
                 self.apply([], selecting: [], keepScroll: false)
-                self.showMessage("Can't open this folder.\n\(error.localizedDescription)")
+                if FinderTrash.needsFullDiskAccess(error, opening: url) {
+                    self.showMessage("Can't open folders in the Trash without Full Disk Access.\n"
+                        + "Allow Fennec in System Settings › Privacy & Security › Full Disk Access, "
+                        + "or Put Back or Move the folder out first.")
+                } else {
+                    self.showMessage("Can't open this folder.\n\(error.localizedDescription)")
+                }
             }
 
             if Bench.enabled {

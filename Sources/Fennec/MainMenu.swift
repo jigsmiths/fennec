@@ -8,6 +8,8 @@ enum MainMenu {
         main.addItem(submenu("Fennec", [
             item("About Fennec", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
             .separator(),
+            item("Empty Trash…", #selector(MainWindowController.emptyTrash(_:)), backspace, [.command, .shift]),
+            .separator(),
             item("Hide Fennec", #selector(NSApplication.hide(_:)), "h"),
             item("Quit Fennec", #selector(NSApplication.terminate(_:)), "q"),
         ]))
@@ -30,6 +32,8 @@ enum MainMenu {
             .separator(),
             item("Find…", #selector(MainWindowController.findFiles(_:)), "f"),
             .separator(),
+            item("Move To…", #selector(MainWindowController.moveTo(_:))),
+            item("Put Back", #selector(MainWindowController.putBack(_:))),
             item("Move to Trash", #selector(MainWindowController.moveToTrash(_:)), backspace),
             item("Delete Immediately…", #selector(MainWindowController.deleteImmediately(_:)), backspace,
                  [.command, .option]),

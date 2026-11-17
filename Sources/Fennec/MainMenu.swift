@@ -28,6 +28,8 @@ enum MainMenu {
             item("Rename", #selector(MainWindowController.renameSelection(_:))),
             item("Quick Look", #selector(MainWindowController.toggleQuickLook(_:)), "y"),
             item("Get Info", #selector(MainWindowController.getInfo(_:)), "i"),
+            item("Recalculate Folder Stats", #selector(MainWindowController.recalculateFolderStats(_:)),
+                 "r", [.command, .option]),
             item("Share…", #selector(MainWindowController.share(_:))),
             item("Add to Sidebar", #selector(MainWindowController.addToSidebar(_:)), "t", [.command, .control]),
             .separator(),

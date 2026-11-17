@@ -434,6 +434,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             : entries)
     }
 
+    /// Walks the selected folders again, or the folder being shown when nothing is selected.
+    @objc func recalculateFolderStats(_ sender: Any?) {
+        FolderStatsService.shared.recalculate(foldersToMeasure)
+    }
+
+    private var foldersToMeasure: [URL] {
+        let entries = folder.selectedEntries
+        if entries.isEmpty { return folder.currentDirectory.map { [$0] } ?? [] }
+        return entries.filter(\.isDirectory).map(\.url)
+    }
+
     /// Pins the selected folders, or the folder being shown when nothing is selected.
     @objc func addToSidebar(_ sender: Any?) {
         PinnedFolders.update { $0.add(foldersToPin.map(\.path)) }
@@ -501,6 +512,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         // Renaming or adding items inside the Trash would break Put Back.
         case #selector(moveToTrash(_:)): return !inTrash && !folder.selectedEntries.isEmpty
         case #selector(newFolder(_:)): return !inTrash
+        case #selector(recalculateFolderStats(_:)): return !inTrash && !foldersToMeasure.isEmpty
         case #selector(addToSidebar(_:)):
             let pins = foldersToPin
             return !inTrash && !pins.isEmpty && !pins.allSatisfy { PinnedFolders.favorites.contains($0.path) }

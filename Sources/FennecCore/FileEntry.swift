@@ -17,6 +17,8 @@ public struct FileEntry: Sendable, Hashable, Identifiable {
     public let modified: Date?
     public let typeIdentifier: String?
     public let cloudStatus: CloudStatus
+    /// Cached totals for a folder or package, filled in after loading.
+    public var folderStats: FolderStats?
 
     public init(
         url: URL,
@@ -47,4 +49,7 @@ public struct FileEntry: Sendable, Hashable, Identifiable {
     public var isBrowsable: Bool { isDirectory && !isPackage }
 
     public var contentType: UTType? { typeIdentifier.flatMap(UTType.init) }
+
+    /// A file's size, or a folder's total once its stats are known. A folder's own size is just its listing's.
+    public var displaySize: Int64? { isDirectory ? folderStats?.bytes : size }
 }

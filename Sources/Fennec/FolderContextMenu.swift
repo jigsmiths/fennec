@@ -13,6 +13,7 @@ enum FolderContextMenu {
                 item("New Folder", #selector(MainWindowController.newFolder(_:))),
                 .separator(),
                 item("Get Info", #selector(MainWindowController.getInfo(_:))),
+                item("Recalculate Folder Stats", #selector(MainWindowController.recalculateFolderStats(_:))),
                 item("Add to Sidebar", #selector(MainWindowController.addToSidebar(_:))),
                 item("Copy as Pathname", #selector(MainWindowController.copyPath(_:))),
                 item("Copy Enclosing Folder Path", #selector(MainWindowController.copyEnclosingFolderPath(_:))),
@@ -36,6 +37,11 @@ enum FolderContextMenu {
             .separator(),
             item("Quick Look", #selector(MainWindowController.toggleQuickLook(_:))),
             item("Get Info", #selector(MainWindowController.getInfo(_:))),
+        ])
+        if entries.contains(where: \.isDirectory) {
+            menu.addItem(item("Recalculate Folder Stats", #selector(MainWindowController.recalculateFolderStats(_:))))
+        }
+        add(to: menu, [
             item("Rename", #selector(MainWindowController.renameSelection(_:))),
             .separator(),
             item("Copy", #selector(MainWindowController.copy(_:))),

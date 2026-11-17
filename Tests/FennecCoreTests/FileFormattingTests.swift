@@ -34,4 +34,26 @@ struct FileFormattingTests {
         let entry = FileEntry(url: URL(filePath: "/x/Sub"), isDirectory: true, size: 64)
         #expect(FileFormatting.size(for: entry) == "")
     }
+
+    @Test func foldersAndPackagesWithStatsShowTheirTotal() {
+        for isPackage in [false, true] {
+            var entry = FileEntry(url: URL(filePath: "/x/Sub"), isDirectory: true, isPackage: isPackage, size: 64)
+            entry.folderStats = FolderStats(bytes: 5000, calculated: Date())
+            #expect(FileFormatting.size(for: entry) == FileFormatting.bytes(5000))
+        }
+    }
+
+    @Test func folderStatsDetailListsCountsDiskUseAndAge() {
+        let now = Date()
+        let stats = FolderStats(
+            bytes: 10, allocated: 8192, files: 1204, subfolders: 1, calculated: now - 7200, incomplete: true)
+
+        let lines = FileFormatting.folderStatsDetail(stats, now: now).components(separatedBy: "\n")
+
+        #expect(lines.count == 4)
+        #expect(lines[0] == "\(Int64(1204).formatted()) files in 1 folder")
+        #expect(lines[1] == "\(FileFormatting.bytes(8192)) on disk")
+        #expect(lines[2] == "Some folders inside couldn't be read")
+        #expect(lines[3].hasPrefix("Calculated "))
+    }
 }

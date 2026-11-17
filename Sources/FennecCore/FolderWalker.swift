@@ -92,7 +92,9 @@ public enum FolderWalker {
         let rootModified = (try? root.resourceValues(forKeys: [.contentModificationDateKey]))?
             .contentModificationDate.map { Int64($0.timeIntervalSince1970) } ?? 0
         walk.folders.append(.init(parent: -1, name: root.lastPathComponent, stats: FolderStats(calculated: now)))
-        guard visit(rootPath, record: 0, recordInside: true, modified: rootModified) != nil else { return nil }
+        let rootIsPackage = FileIndexer.isPackageName(root.lastPathComponent, cache: &packageExtensions)
+        guard visit(rootPath, record: 0, recordInside: !rootIsPackage, modified: rootModified) != nil
+        else { return nil }
         return walk
     }
 }

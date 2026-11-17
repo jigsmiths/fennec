@@ -139,15 +139,6 @@ final class InfoWindowController: NSWindowController, NSWindowDelegate {
     }
 }
 
-/// Lets a cancelled panel stop the folder walk running on the blocking IO queue.
-private final class CancelFlag: @unchecked Sendable {
-    private let lock = NSLock()
-    private var cancelled = false
-
-    func set() { lock.withLock { cancelled = true } }
-    @Sendable func get() -> Bool { lock.withLock { cancelled } }
-}
-
 /// Escape and Cmd+W close the panel.
 private final class InfoPanel: NSPanel {
     override func cancelOperation(_ sender: Any?) {

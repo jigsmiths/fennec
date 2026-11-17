@@ -41,8 +41,9 @@ public enum FileIndexer {
             if Task.isCancelled { return }
             let fullPath = folderPath.isEmpty ? rootPath : rootPath + "/" + folderPath
 
-            let reachedLimit = reader.list(fullPath) { name, isDirectory, isHidden in
-                if isHidden, !includeHidden { return true }
+            let outcome = reader.list(fullPath) { entry in
+                let (name, isDirectory) = (entry.name, entry.isDirectory)
+                if entry.isHidden, !includeHidden { return true }
                 if isDirectory, skippedFolders.contains(name) { return true }
                 let isPackage = isDirectory && isPackageName(name, cache: &packageExtensions)
                 let relative = folderPath.isEmpty ? name : folderPath + "/" + name
@@ -58,64 +59,18 @@ public enum FileIndexer {
                 }
                 return count < limit
             }
-            if reachedLimit { break }
+            if outcome == .stopped { break }
         }
         if !batch.isEmpty { onBatch(batch) }
     }
 
     /// Packages (.app, .bundle, .xcodeproj…) are recognized by extension, as Launch Services does for nearly all.
-    private static func isPackageName(_ name: String, cache: inout [String: Bool]) -> Bool {
+    static func isPackageName(_ name: String, cache: inout [String: Bool]) -> Bool {
         let ext = (name as NSString).pathExtension.lowercased()
         guard !ext.isEmpty else { return false }
         if let known = cache[ext] { return known }
         let isPackage = UTType(filenameExtension: ext, conformingTo: .directory)?.conforms(to: .package) ?? false
         cache[ext] = isPackage
         return isPackage
-    }
-}
-
-/// Reads a folder's entries with getattrlistbulk: names, types and the hidden flag come back in a few system
-/// calls per folder, instead of an NSURL and a property lookup per entry.
-private final class BulkReader {
-    private static let bufferSize = 64 * 1024
-    private let buffer = UnsafeMutableRawPointer.allocate(byteCount: bufferSize, alignment: 8)
-    private var attributes: attrlist = {
-        var list = attrlist()
-        list.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
-        list.commonattr = attrgroup_t(ATTR_CMN_RETURNED_ATTRS) | attrgroup_t(ATTR_CMN_NAME)
-            | attrgroup_t(ATTR_CMN_OBJTYPE) | attrgroup_t(ATTR_CMN_FLAGS)
-        return list
-    }()
-
-    deinit { buffer.deallocate() }
-
-    /// Calls `entry(name, isDirectory, isHidden)` for each entry until it returns false. Symlinks count as files,
-    /// so they're never followed. Returns true if `entry` stopped the listing.
-    func list(_ path: String, entry: (String, Bool, Bool) -> Bool) -> Bool {
-        let fd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-        guard fd >= 0 else { return false }
-        defer { close(fd) }
-
-        while true {
-            let count = getattrlistbulk(fd, &attributes, buffer, Self.bufferSize, UInt64(FSOPT_PACK_INVAL_ATTRS))
-            guard count > 0 else { return false }
-            var record = buffer
-            for _ in 0..<count {
-                // Layout, in the requested attributes' order: length, returned set, name ref, type, flags.
-                let length = record.loadUnaligned(as: UInt32.self)
-                var field = record + MemoryLayout<UInt32>.size + MemoryLayout<attribute_set_t>.size
-                let nameRef = field.loadUnaligned(as: attrreference_t.self)
-                let name = String(cString: (field + Int(nameRef.attr_dataoffset)).assumingMemoryBound(to: CChar.self))
-                field += MemoryLayout<attrreference_t>.size
-                let type = field.loadUnaligned(as: fsobj_type_t.self)
-                field += MemoryLayout<fsobj_type_t>.size
-                let flags = field.loadUnaligned(as: UInt32.self)
-                record += Int(length)
-
-                let isDirectory = type == fsobj_type_t(VDIR.rawValue)
-                let isHidden = name.hasPrefix(".") || flags & UInt32(UF_HIDDEN) != 0
-                if !entry(name, isDirectory, isHidden) { return true }
-            }
-        }
     }
 }

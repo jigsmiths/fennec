@@ -77,6 +77,7 @@ final class FolderViewController: NSViewController {
     private var openRenames = 0
     private var reloadAfterRename = false
     private var watchers: [DirectoryWatcher] = []
+    private var statsRefreshScheduled = false
 
     init(viewMode: ViewMode, sortOrder: FennecCore.SortOrder, showHidden: Bool) {
         self.viewMode = viewMode
@@ -84,6 +85,8 @@ final class FolderViewController: NSViewController {
         self.showHidden = showHidden
         content = Self.makeContent(viewMode)
         super.init(nibName: nil, bundle: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(folderStatsDidUpdate(_:)), name: FolderStatsService.didUpdate, object: nil)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -224,9 +227,11 @@ final class FolderViewController: NSViewController {
         loadTask = Task { [weak self] in
             let result: Result<([FileEntry], [FileEntry]), Error>
             do {
+                let entries = try await BlockingIO.run { try DirectoryLoader.loadSync(url) }
+                let stats = Self.hasFolderStats(url) ? await FolderStatsService.shared.childStats(of: url) : [:]
                 result = .success(try await BlockingIO.run {
-                    let entries = try DirectoryLoader.loadSync(url)
-                    return (entries, Sorting.arrange(entries, showHidden: showHidden, order: order))
+                    let measured = stats.isEmpty ? entries : FolderStats.apply(stats, to: entries)
+                    return (measured, Sorting.arrange(measured, showHidden: showHidden, order: order))
                 })
             } catch {
                 result = .failure(error)
@@ -239,6 +244,7 @@ final class FolderViewController: NSViewController {
             case .success(let (entries, arranged)):
                 self.allEntries = entries
                 self.apply(arranged, selecting: paths, keepScroll: keepScroll)
+                self.requestMissingStats()
             case .failure(let error):
                 self.allEntries = []
                 self.apply([], selecting: [], keepScroll: false)
@@ -304,6 +310,44 @@ final class FolderViewController: NSViewController {
     private func showMessage(_ text: String) {
         messageLabel.stringValue = text
         messageLabel.isHidden = false
+    }
+
+    // MARK: Folder stats
+
+    /// The Trash lists items from several folders, so stats keyed by this folder wouldn't match them.
+    private static func hasFolderStats(_ url: URL) -> Bool {
+        !FinderTrash.isTrash(url) && !Bench.enabled
+    }
+
+    private func requestMissingStats() {
+        guard let directory, Self.hasFolderStats(directory) else { return }
+        FolderStatsService.shared.request(rows.filter { $0.isDirectory && $0.folderStats == nil }.map(\.url))
+    }
+
+    /// A walk of this folder, a folder above it or one of its subfolders changes what the rows show.
+    @objc private func folderStatsDidUpdate(_ notification: Notification) {
+        guard let walked = (notification.object as? URL)?.standardizedFileURL.path,
+              let shown = directory?.standardizedFileURL.path else { return }
+        let isAbove = walked == "/" || shown == walked || shown.hasPrefix(walked + "/")
+        let isChild = (walked as NSString).deletingLastPathComponent == shown
+        guard isAbove || isChild, !statsRefreshScheduled else { return }
+
+        // Subfolders often finish in quick succession, so pick up several walks at once.
+        statsRefreshScheduled = true
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard let self else { return }
+            self.statsRefreshScheduled = false
+            guard let directory = self.directory else { return }
+            let stats = await FolderStatsService.shared.childStats(of: directory)
+            guard self.directory == directory, self.pendingLoad == nil else { return }
+            if self.openRenames > 0 {
+                self.reloadAfterRename = true
+                return
+            }
+            self.allEntries = FolderStats.apply(stats, to: self.allEntries)
+            self.rearrange()
+        }
     }
 
     // MARK: Selection and opening

@@ -67,6 +67,17 @@ struct SortingTests {
         #expect(names == ["c", "a", "b"])
     }
 
+    @Test func foldersSortByTheirTotalsAndUnknownSizesComeFirst() {
+        var big = folder("Big"), small = folder("Small")
+        big.folderStats = FolderStats(bytes: 900, calculated: Date())
+        small.folderStats = FolderStats(bytes: 5, calculated: Date())
+        let entries = [big, folder("Unknown"), small, file("a", size: 1000)]
+
+        let names = Sorting.sorted(entries, by: SortOrder(key: .size, ascending: true)).map(\.name)
+
+        #expect(names == ["Unknown", "Small", "Big", "a"])
+    }
+
     @Test func hiddenEntriesAreFilteredUnlessShown() {
         let entries = [file(".env", hidden: true), file("main.go")]
         #expect(Sorting.arrange(entries, showHidden: false, order: SortOrder()).map(\.name) == ["main.go"])

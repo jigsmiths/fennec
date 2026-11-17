@@ -28,4 +28,14 @@ public struct FolderStats: Sendable, Hashable {
         self.durationMilliseconds = durationMilliseconds
         self.incomplete = incomplete
     }
+
+    /// Sets each folder's stats from `stats`, keyed by `FolderStatsStore.normalized(name)`.
+    public static func apply(_ stats: [String: FolderStats], to entries: [FileEntry]) -> [FileEntry] {
+        entries.map { entry in
+            guard entry.isDirectory else { return entry }
+            var updated = entry
+            updated.folderStats = stats[FolderStatsStore.normalized(entry.name)]
+            return updated
+        }
+    }
 }

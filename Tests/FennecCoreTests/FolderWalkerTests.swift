@@ -86,6 +86,17 @@ import Testing
         #expect(stats[""]?.bytes == 7)
     }
 
+    @Test func walkingAPackageRecordsOnlyThePackage() throws {
+        let dir = try TempDir()
+        try dir.folder("Tool.app/Contents/MacOS")
+        try dir.file("Tool.app/Contents/MacOS/tool", bytes: 7)
+
+        let stats = try walk(dir.url.appendingPathComponent("Tool.app"))
+
+        #expect(stats.keys.sorted() == [""])
+        #expect(stats[""]?.bytes == 7)
+    }
+
     @Test func tracksTheNewestModificationInside() throws {
         let dir = try TempDir()
         try dir.folder("sub")

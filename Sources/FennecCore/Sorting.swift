@@ -34,7 +34,7 @@ public enum Sorting {
             var result: ComparisonResult
             switch order.key {
             case .name: result = .orderedSame
-            case .size: result = ordered(a.size ?? -1, b.size ?? -1)
+            case .size: result = ordered(a.displaySize ?? -1, b.displaySize ?? -1)
             case .modified: result = ordered(a.modified ?? .distantPast, b.modified ?? .distantPast)
             case .kind: result = ordered(kindRanks[i], kindRanks[j])
             }

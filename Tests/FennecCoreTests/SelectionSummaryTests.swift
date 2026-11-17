@@ -24,4 +24,19 @@ struct SelectionSummaryTests {
     @Test func foldersOnlyHaveNoSize() {
         #expect(SelectionSummary.describe([folder("A"), folder("B")]) == "2 folders")
     }
+
+    private func measured(_ name: String, _ bytes: Int64) -> FileEntry {
+        var entry = folder(name)
+        entry.folderStats = FolderStats(bytes: bytes, calculated: Date())
+        return entry
+    }
+
+    @Test func foldersShowTheTotalOfThoseWithStats() {
+        #expect(SelectionSummary.describe([measured("A", 3000), folder("B")]) == "2 folders, \(FileFormatting.bytes(3000))")
+    }
+
+    @Test func mixedSelectionAddsFolderTotals() {
+        let summary = SelectionSummary.describe([file("a", 2000), measured("Sub", 5000)])
+        #expect(summary == "2 items (1 folder), \(FileFormatting.bytes(7000))")
+    }
 }

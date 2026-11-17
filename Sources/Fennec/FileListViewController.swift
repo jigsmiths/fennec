@@ -173,7 +173,7 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
             font = FileNameCell.font
         case .size:
             // Formatting every size is too slow for huge folders; these are the widest each unit gets.
-            texts = rows.contains { !$0.isBrowsable && $0.size != nil }
+            texts = rows.contains { $0.displaySize != nil }
                 ? Set([999, 999_000, 999_500_000, 999_500_000_000].map(FileFormatting.bytes)) : []
         case .modified:
             // Files saved in the same minute share a label, so format each minute once.
@@ -296,7 +296,9 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
 
         let cell = tableView.makeView(withIdentifier: TextCell.reuseID, owner: self) as? TextCell ?? TextCell()
         switch key {
-        case .size: cell.set(FileFormatting.size(for: entry), alignment: .right)
+        case .size:
+            cell.set(FileFormatting.size(for: entry), alignment: .right)
+            cell.toolTip = entry.folderStats.map { FileFormatting.folderStatsDetail($0) }
         case .modified: cell.set(FileDisplay.date(entry.modified), alignment: .left)
         case .kind: cell.set(FileDisplay.kind(for: entry), alignment: .left)
         case .name: break
@@ -386,5 +388,6 @@ final class TextCell: NSTableCellView {
     func set(_ text: String, alignment: NSTextAlignment) {
         label.stringValue = text
         label.alignment = alignment
+        toolTip = nil
     }
 }

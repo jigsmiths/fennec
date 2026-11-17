@@ -15,6 +15,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var previewItem: NSSplitViewItem!
     private var viewModeItem: NSToolbarItemGroup?
     private var operations: OperationsController!
+    private let statusBar = StatusBarView()
     private let operationsStatus = OperationsStatusView()
     private var operationsItem: NSToolbarItem?
     private var finder: FileFinderController?
@@ -59,7 +60,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         previewItem.minimumThickness = 220
         previewItem.maximumThickness = 520
         splitController.addSplitViewItem(sidebarItem)
-        splitController.addSplitViewItem(NSSplitViewItem(viewController: panes))
+        splitController.addSplitViewItem(NSSplitViewItem(viewController: PanesContainer(panes, statusBar: statusBar)))
         splitController.addSplitViewItem(previewItem)
         // Sidebar and preview widths are shared by all windows; each window's pane divider is in the session.
         splitController.splitView.identifier = NSUserInterfaceItemIdentifier("FennecSplit")
@@ -315,6 +316,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     private func selectionChanged(_ entries: [FileEntry]) {
+        statusBar.showContents(itemCount: folder.itemCount, selection: entries)
         if !previewItem.isCollapsed { preview.show(entries, includeHidden: panes.showsHidden) }
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible {
             QLPreviewPanel.shared().reloadData()

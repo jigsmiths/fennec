@@ -126,6 +126,31 @@ import Testing
         #expect(stats[""]?.bytes == 0)
     }
 
+    @Test func reportsProgressAsItGoes() throws {
+        let dir = try TempDir()
+        try dir.folder("a/b")
+        try dir.file("top.txt", bytes: 1)
+        try dir.file("a/one.txt", bytes: 10)
+        try dir.file("a/b/two.txt", bytes: 100)
+
+        var reports: [FolderWalker.Progress] = []
+        _ = FolderWalker.walk(dir.url, progressInterval: .zero) { reports.append($0) }
+
+        #expect(reports.map(\.folder) == ["", "a", "a/b"])
+        #expect(reports.map(\.files) == [1, 2, 3])
+        #expect(reports.last?.bytes == 111)
+    }
+
+    @Test func progressFractionIsCappedBelowDone() {
+        let halfway = FolderWalker.Progress(files: 50, bytes: 0, folder: "")
+        let past = FolderWalker.Progress(files: 150, bytes: 0, folder: "")
+
+        #expect(halfway.fraction(ofExpected: 100) == 0.5)
+        #expect(past.fraction(ofExpected: 100) == 0.99)
+        #expect(halfway.fraction(ofExpected: nil) == nil)
+        #expect(halfway.fraction(ofExpected: 0) == nil)
+    }
+
     @Test func stopsWhenCancelled() throws {
         let dir = try TempDir()
         try dir.folder("a/b")

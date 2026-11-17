@@ -91,6 +91,9 @@ final class FolderViewController: NSViewController {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    /// Rows shown, after hiding hidden files.
+    var itemCount: Int { rows.count }
+
     var selectedEntries: [FileEntry] {
         content.selectedIndexes.filter { $0 < rows.count }.map { rows[$0] }
     }

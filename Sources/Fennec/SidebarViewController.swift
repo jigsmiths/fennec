@@ -1,16 +1,30 @@
 import AppKit
+import FennecCore
 
 @MainActor
-final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
     private enum Row {
         case header(String)
+        case favorite(Place)
         case place(Place)
+
+        var place: Place? {
+            switch self {
+            case .header: nil
+            case .favorite(let place), .place(let place): place
+            }
+        }
     }
+
+    /// A favorite being dragged to a new spot, so drags within the sidebar never carry file URLs.
+    private static let favoriteType = NSPasteboard.PasteboardType("dev.fennec.favorite")
 
     var onNavigate: ((URL) -> Void)?
 
     private let tableView = NSTableView()
     private var rows: [Row] = []
+    private var favorites: [Place] = []
+    private var highlighted: URL?
     private var suppressSelection = false
 
     override func loadView() {
@@ -21,6 +35,13 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
         tableView.rowSizeStyle = .default
         tableView.dataSource = self
         tableView.delegate = self
+        tableView.registerForDraggedTypes([Self.favoriteType, .fileURL])
+        tableView.setDraggingSourceOperationMask(.move, forLocal: true)
+        tableView.draggingDestinationFeedbackStyle = .gap
+
+        let menu = NSMenu()
+        menu.delegate = self
+        tableView.menu = menu
 
         let scrollView = NSScrollView()
         scrollView.documentView = tableView
@@ -30,18 +51,18 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
 
         reloadPlaces()
         let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(self, selector: #selector(volumesChanged(_:)), name: NSWorkspace.didMountNotification, object: nil)
-        center.addObserver(self, selector: #selector(volumesChanged(_:)), name: NSWorkspace.didUnmountNotification, object: nil)
+        center.addObserver(self, selector: #selector(placesChanged(_:)), name: NSWorkspace.didMountNotification, object: nil)
+        center.addObserver(self, selector: #selector(placesChanged(_:)), name: NSWorkspace.didUnmountNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(placesChanged(_:)), name: PinnedFolders.didChange, object: nil)
     }
 
     func highlight(_ url: URL) {
         loadViewIfNeeded()
+        highlighted = url
         suppressSelection = true
         defer { suppressSelection = false }
-        let match = rows.firstIndex { row in
-            if case .place(let place) = row { return Places.samePath(place.url, url) }
-            return false
-        }
+        let match = rows.firstIndex { row in row.place.map { Places.samePath($0.url, url) } ?? false }
         if let match {
             tableView.selectRowIndexes([match], byExtendingSelection: false)
         } else {
@@ -49,15 +70,20 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
         }
     }
 
-    @objc private func volumesChanged(_ notification: Notification) {
+    @objc private func placesChanged(_ notification: Notification) {
         reloadPlaces()
     }
 
     private func reloadPlaces() {
-        rows = [.header("Places")] + Places.standard.map(Row.place)
+        favorites = Places.favorites
+        let favoriteRows = favorites.isEmpty ? [] : [.header("Favorites")] + favorites.map(Row.favorite)
+        rows = favoriteRows + [.header("Places")] + Places.standard.map(Row.place)
             + [.header("Locations")] + Places.volumes.map(Row.place)
         tableView.reloadData()
+        if let highlighted { highlight(highlighted) }
     }
+
+    // MARK: Table
 
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
@@ -67,8 +93,7 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        if case .place = rows[row] { return true }
-        return false
+        rows[row].place != nil
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -77,7 +102,7 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
             let cell = reuse("header", in: tableView, withImage: false)
             cell.textField?.stringValue = title
             return cell
-        case .place(let place):
+        case .favorite(let place), .place(let place):
             let cell = reuse("place", in: tableView, withImage: true)
             cell.textField?.stringValue = place.name
             cell.imageView?.image = NSImage(systemSymbolName: place.symbol, accessibilityDescription: nil)
@@ -87,9 +112,92 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard !suppressSelection, tableView.selectedRow >= 0,
-              case .place(let place) = rows[tableView.selectedRow] else { return }
+              let place = rows[tableView.selectedRow].place else { return }
         onNavigate?(place.url)
     }
+
+    // MARK: Context menu
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let row = tableView.clickedRow
+        guard row >= 0, case .favorite(let place) = rows[row] else { return }
+        let remove = NSMenuItem(title: "Remove from Sidebar", action: #selector(removeFavorite(_:)), keyEquivalent: "")
+        remove.target = self
+        remove.representedObject = place.url
+        menu.addItem(remove)
+    }
+
+    @objc private func removeFavorite(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        PinnedFolders.update { $0.remove(url.path) }
+    }
+
+    // MARK: Drag and drop
+
+    /// The Favorites rows, as the gap indexes a drop can land in: before the first through after the last.
+    private var favoriteGaps: ClosedRange<Int> {
+        let first = favorites.isEmpty ? 0 : 1
+        return first...(first + favorites.count)
+    }
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard case .favorite(let place) = rows[row] else { return nil }
+        let item = NSPasteboardItem()
+        item.setString(place.url.path, forType: Self.favoriteType)
+        return item
+    }
+
+    func tableView(
+        _ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
+        proposedDropOperation dropOperation: NSTableView.DropOperation
+    ) -> NSDragOperation {
+        let mask = info.draggingSourceOperationMask
+        let operation: NSDragOperation
+        if draggedFavorite(info) != nil {
+            operation = .move
+        } else if !draggedFolders(info).isEmpty {
+            operation = [.link, .generic, .copy].first(where: mask.contains) ?? []
+        } else {
+            return []
+        }
+        // Wherever it's dropped, a folder lands in the Favorites section.
+        let gaps = favoriteGaps
+        tableView.setDropRow(min(max(row, gaps.lowerBound), gaps.upperBound), dropOperation: .above)
+        return operation
+    }
+
+    func tableView(
+        _ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
+        dropOperation: NSTableView.DropOperation
+    ) -> Bool {
+        let index = row - favoriteGaps.lowerBound
+        let before = index < favorites.count ? favorites[index].url.path : nil
+        if let dragged = draggedFavorite(info) {
+            PinnedFolders.update { $0.move(dragged, before: before) }
+            return true
+        }
+        let folders = draggedFolders(info)
+        guard !folders.isEmpty else { return false }
+        PinnedFolders.update { $0.add(folders.map(\.path), before: before) }
+        return true
+    }
+
+    private func draggedFavorite(_ info: NSDraggingInfo) -> String? {
+        info.draggingPasteboard.string(forType: Self.favoriteType)
+    }
+
+    /// The dragged folders, or none when anything dragged is a file or a package like an app.
+    private func draggedFolders(_ info: NSDraggingInfo) -> [URL] {
+        let urls = info.draggingPasteboard.readObjects(
+            forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        let allFolders = urls.allSatisfy { url in
+            Places.isFolder(url.path) && !NSWorkspace.shared.isFilePackage(atPath: url.path)
+        }
+        return allFolders ? urls : []
+    }
+
+    // MARK: Cells
 
     private func reuse(_ id: String, in tableView: NSTableView, withImage: Bool) -> NSTableCellView {
         let identifier = NSUserInterfaceItemIdentifier(id)

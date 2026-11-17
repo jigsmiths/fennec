@@ -434,6 +434,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             : entries)
     }
 
+    /// Pins the selected folders, or the folder being shown when nothing is selected.
+    @objc func addToSidebar(_ sender: Any?) {
+        PinnedFolders.update { $0.add(foldersToPin.map(\.path)) }
+    }
+
+    /// Nothing when the selection includes files, so a mixed selection doesn't pin half of itself.
+    private var foldersToPin: [URL] {
+        let entries = folder.selectedEntries
+        if entries.isEmpty { return folder.currentDirectory.map { [$0] } ?? [] }
+        return entries.allSatisfy(\.isBrowsable) ? entries.map(\.url) : []
+    }
+
     @objc func copyPath(_ sender: Any?) {
         FileClipboard.writePaths(selectedOrFolderURLs)
     }
@@ -489,6 +501,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         // Renaming or adding items inside the Trash would break Put Back.
         case #selector(moveToTrash(_:)): return !inTrash && !folder.selectedEntries.isEmpty
         case #selector(newFolder(_:)): return !inTrash
+        case #selector(addToSidebar(_:)):
+            let pins = foldersToPin
+            return !inTrash && !pins.isEmpty && !pins.allSatisfy { PinnedFolders.favorites.contains($0.path) }
         case #selector(copy(_:)), #selector(cut(_:)), #selector(deleteImmediately(_:)),
              #selector(share(_:)), #selector(openWith(_:)), #selector(moveTo(_:)):
             return !folder.selectedEntries.isEmpty

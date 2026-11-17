@@ -29,6 +29,7 @@ enum MainMenu {
             item("Quick Look", #selector(MainWindowController.toggleQuickLook(_:)), "y"),
             item("Get Info", #selector(MainWindowController.getInfo(_:)), "i"),
             item("Share…", #selector(MainWindowController.share(_:))),
+            item("Add to Sidebar", #selector(MainWindowController.addToSidebar(_:)), "t", [.command, .control]),
             .separator(),
             item("Find…", #selector(MainWindowController.findFiles(_:)), "f"),
             .separator(),

@@ -46,7 +46,38 @@ enum Places {
         }
     }
 
+    /// Pinned folders that exist right now. Missing ones stay pinned so they return when a drive reconnects.
+    @MainActor static var favorites: [Place] {
+        PinnedFolders.favorites.paths.filter(isFolder).map { path in
+            let url = URL(filePath: path, directoryHint: .isDirectory)
+            let inCloud = url.path.hasPrefix(ICloudDrive.mobileDocuments.path)
+            return Place(name: FileManager.default.displayName(atPath: path), symbol: inCloud ? "icloud" : "folder", url: url)
+        }
+    }
+
+    static func isFolder(_ path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
     static func samePath(_ a: URL, _ b: URL) -> Bool {
         a.standardizedFileURL.path == b.standardizedFileURL.path
+    }
+}
+
+/// The app-wide pinned folders. Every change is saved and tells each window's sidebar to reload.
+@MainActor
+enum PinnedFolders {
+    static let didChange = Notification.Name("PinnedFoldersDidChange")
+
+    private(set) static var favorites = FavoritesStore.load(from: FavoritesStore.defaultURL)
+
+    static func update(_ change: (inout Favorites) -> Void) {
+        var updated = favorites
+        change(&updated)
+        guard updated != favorites else { return }
+        favorites = updated
+        try? FavoritesStore.save(updated, to: FavoritesStore.defaultURL)
+        NotificationCenter.default.post(name: didChange, object: nil)
     }
 }

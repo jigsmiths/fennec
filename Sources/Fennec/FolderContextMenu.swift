@@ -13,6 +13,7 @@ enum FolderContextMenu {
                 item("New Folder", #selector(MainWindowController.newFolder(_:))),
                 .separator(),
                 item("Get Info", #selector(MainWindowController.getInfo(_:))),
+                item("Add to Sidebar", #selector(MainWindowController.addToSidebar(_:))),
                 item("Copy as Pathname", #selector(MainWindowController.copyPath(_:))),
                 item("Copy Enclosing Folder Path", #selector(MainWindowController.copyEnclosingFolderPath(_:))),
                 .separator(),
@@ -27,6 +28,9 @@ enum FolderContextMenu {
         if let openWith = openWithItem(for: entries) { menu.addItem(openWith) }
         if entries.count == 1, entries[0].isBrowsable {
             menu.addItem(item("Open in Other Pane", #selector(MainWindowController.openInOtherPane(_:))))
+        }
+        if entries.allSatisfy(\.isBrowsable) {
+            menu.addItem(item("Add to Sidebar", #selector(MainWindowController.addToSidebar(_:))))
         }
         add(to: menu, [
             .separator(),

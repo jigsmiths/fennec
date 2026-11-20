@@ -22,18 +22,18 @@ jobs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha || github.sha }} # the commit CI tested
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: 'stable'
 
       - name: Install svu
-        run: go install github.com/caarlos0/svu/v3@v3.4.0
+        run: go install github.com/caarlos0/svu/v3@v3.4.4
 
       - name: Tag the next version, if the commits call for one
         id: tag
@@ -66,12 +66,12 @@ jobs:
       TAG: ${{ needs.tag.outputs.tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.tag.outputs.tag }}
 
       - name: Install just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v4
 
       - name: Build and package
         id: package
@@ -95,7 +95,7 @@ jobs:
           fi
 
       - name: Checkout Homebrew tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: jigsmiths/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

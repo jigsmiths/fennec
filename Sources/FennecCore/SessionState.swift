@@ -51,7 +51,6 @@ public struct WindowState: Codable, Equatable, Sendable {
         return active
     }
 
-    /// Fixes up a state read from disk: missing folders, too many panes, out-of-range numbers.
     func sanitized(fallback: URL) -> WindowState? {
         guard !panes.isEmpty else { return nil }
         var state = self

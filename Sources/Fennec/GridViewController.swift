@@ -8,15 +8,12 @@ final class GridCollectionView: NSCollectionView {
     var onQuickLook: (() -> Void)?
     var onSwitchPane: (() -> Void)?
     var onFocus: (() -> Void)?
-    /// A right-click on a tile, or on empty space (nil).
     var onMenu: ((IndexPath?) -> NSMenu?)?
 
     override func menu(for event: NSEvent) -> NSMenu? {
         onMenu?(indexPathForItem(at: convert(event.locationInWindow, from: nil)))
     }
 
-    /// Whether selected tiles use the strong highlight: only while this grid has focus in the key window,
-    /// like a table's selection.
     var isEmphasized: Bool {
         window?.isKeyWindow == true && window?.firstResponder === self
     }
@@ -118,8 +115,6 @@ final class GridViewController: NSViewController, FolderContentView, NSCollectio
         view = scrollView
     }
 
-    // MARK: FolderContentView
-
     var selectedIndexes: IndexSet {
         IndexSet(collectionView.selectionIndexPaths.map(\.item))
     }
@@ -140,7 +135,6 @@ final class GridViewController: NSViewController, FolderContentView, NSCollectio
         if let first = paths.min() {
             collectionView.scrollToItems(at: [first], scrollPosition: .nearestHorizontalEdge)
         } else {
-            // The top sits above zero by the toolbar's content inset, so scroll to the top edge, not .zero.
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: -scrollView.contentInsets.top))
             scrollView.reflectScrolledClipView(scrollView.contentView)
         }
@@ -186,8 +180,6 @@ final class GridViewController: NSViewController, FolderContentView, NSCollectio
         return onContextMenu?()
     }
 
-    // MARK: Drag and drop
-
     func collectionView(_ collectionView: NSCollectionView, canDragItemsAt indexPaths: Set<IndexPath>, with event: NSEvent) -> Bool {
         true
     }
@@ -217,8 +209,6 @@ final class GridViewController: NSViewController, FolderContentView, NSCollectio
         guard operation == .on, index >= 0, index < rows.count, rows[index].isBrowsable else { return nil }
         return rows[index]
     }
-
-    // MARK: Collection
 
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
         rows.count
@@ -311,7 +301,6 @@ final class GridItem: NSCollectionViewItem {
         }
     }
 
-    // A reused tile's old request would otherwise keep running and hold up the tiles on screen.
     private func cancelThumbnail() {
         if let thumbnailRequest { ThumbnailCache.shared.cancel(thumbnailRequest) }
         thumbnailRequest = nil

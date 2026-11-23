@@ -49,7 +49,6 @@ public actor FolderStatsStore {
         static let stalest = "SELECT id FROM folders WHERE calculated IS NOT NULL ORDER BY calculated LIMIT ?1"
         static let parentAndName = "SELECT parent, name FROM folders WHERE id = ?1"
 
-        /// Everything run after setup, for checking that each one uses an index.
         static let queries = [child, insertName, stats, childStats, deleteChildren, updateStats, insertFolder,
                               stalest, parentAndName]
     }
@@ -90,8 +89,6 @@ public actor FolderStatsStore {
         url.standardizedFileURL.path.split(separator: "/").map { normalized(String($0)) }
     }
 
-    // MARK: Reading
-
     public func stats(for folder: URL) throws -> FolderStats? {
         guard let id = try find(Self.components(folder)) else { return nil }
         return try db.query(SQL.stats, [id]) { Self.stats(from: $0, at: 0) }.first
@@ -110,8 +107,6 @@ public actor FolderStatsStore {
         return try ids.map(path(of:))
     }
 
-    // MARK: Writing
-
     /// Replaces everything stored under the walk's root with the walk's folders.
     public func save(_ walk: FolderWalk, at root: URL) throws {
         guard let first = walk.folders.first else { return }
@@ -128,8 +123,6 @@ public actor FolderStatsStore {
             }
         }
     }
-
-    // MARK: Internals
 
     private func find(_ components: [String]) throws -> Int64? {
         var id = Self.rootID
@@ -167,7 +160,6 @@ public actor FolderStatsStore {
         return URL(filePath: "/" + names.reversed().joined(separator: "/"), directoryHint: .isDirectory)
     }
 
-    /// The stats columns in `SQL.statsColumns` order.
     private static func values(_ stats: FolderStats) -> [Int64?] {
         [stats.bytes, stats.allocated, stats.files, stats.subfolders,
          stats.newest.map { Int64($0.timeIntervalSince1970) }, Int64(stats.calculated.timeIntervalSince1970),
@@ -183,7 +175,6 @@ public actor FolderStatsStore {
             durationMilliseconds: row.int64(offset + 6), incomplete: row.int64(offset + 7) != 0)
     }
 
-    /// The `detail` lines of `EXPLAIN QUERY PLAN` for each query.
     func queryPlans() throws -> [String: [String]] {
         var plans: [String: [String]] = [:]
         for sql in SQL.queries {
@@ -199,7 +190,6 @@ struct SQLiteError: Error, CustomStringConvertible {
     var description: String { "SQLite error \(code): \(message)" }
 }
 
-/// One connection with its prepared statements kept for reuse. Only the owning actor touches it.
 final class Database {
     private let handle: OpaquePointer
     private var statements: [String: OpaquePointer] = [:]
@@ -240,7 +230,6 @@ final class Database {
         }
     }
 
-    /// Binds `values` to ?1, ?2… (nil binds NULL), then `name`, if given, to the next one.
     func run(_ sql: String, _ values: [Int64?], name: String? = nil) throws {
         let statement = try prepared(sql, values, name: name)
         defer { sqlite3_reset(statement) }

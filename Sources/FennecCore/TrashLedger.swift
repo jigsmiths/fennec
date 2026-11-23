@@ -8,7 +8,6 @@ public final class TrashLedger: @unchecked Sendable {
 
     private let file: URL
     private let lock = NSLock()
-    /// Trashed path to original path.
     private var entries: [String: String]
 
     public init(file: URL) {

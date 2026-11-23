@@ -20,7 +20,6 @@ public enum ShortcutSearch {
         var modifiers: Set<Modifier> = []
         var key: String?
 
-        /// Parses a panel label: leading modifier symbols, then the key (or free text like "while dragging").
         init(label: String) {
             var rest = Substring(label)
             while let first = rest.first, let modifier = Self.modifier(symbol: first) {
@@ -31,7 +30,6 @@ public enum ShortcutSearch {
             self.key = key.isEmpty ? nil : key.uppercased()
         }
 
-        /// Parses typed input like "cmd shift c", "cmd+c" or "⌘⇧C". Nil when it doesn't read as a shortcut.
         init?(query: String) {
             for token in Self.tokens(query) {
                 var rest = Substring(token)
@@ -62,7 +60,6 @@ public enum ShortcutSearch {
             modifiers.isSubset(of: other.modifiers) && (key == nil || key == other.key)
         }
 
-        /// Splits on spaces and "+", keeping a lone "+" as the key itself.
         private static func tokens(_ query: String) -> [String] {
             query.split(whereSeparator: \.isWhitespace).flatMap { word -> [String] in
                 word == "+" ? ["+"] : word.split(separator: "+").map(String.init)
@@ -80,7 +77,6 @@ public enum ShortcutSearch {
             "ctrl": .control, "control": .control,
         ]
 
-        // Values match what ShortcutLabel shows, uppercased.
         private static let keyWords: [String: String] = [
             "up": "↑", "down": "↓", "left": "←", "right": "→",
             "return": "↩", "enter": "↩", "tab": "⇥", "space": "SPACE",

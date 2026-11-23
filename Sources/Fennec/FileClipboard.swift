@@ -1,7 +1,5 @@
 import AppKit
 
-/// Copy and cut through the general pasteboard as file URLs, so Finder and other apps can paste them too.
-/// A cut adds a private marker type; pasting a marked clipboard moves instead of copying.
 @MainActor
 enum FileClipboard {
     private static let cutMarker = NSPasteboard.PasteboardType("dev.bvdwalt.fennec.cut")
@@ -17,7 +15,6 @@ enum FileClipboard {
         }
     }
 
-    /// Paths as plain text, one per line, for pasting into a terminal or editor.
     static func writePaths(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         let pasteboard = NSPasteboard.general
@@ -35,7 +32,6 @@ enum FileClipboard {
         NSPasteboard.general.canReadObject(forClasses: [NSURL.self], options: fileURLsOnly)
     }
 
-    /// After a cut is pasted the originals are gone, so the clipboard shouldn't offer them again.
     static func clear() {
         NSPasteboard.general.clearContents()
     }

@@ -55,9 +55,6 @@ import Testing
         #expect(ranked("readme", ["docs/old/README.md", "README.md"]) == ["README.md", "docs/old/README.md"])
     }
 
-    // MARK: search
-
-    /// Paths with lots of overlap, so most queries match many of them.
     private static let corpus: [FuzzyMatcher.Candidate] = (0..<30_000).map { i in
         let folders = ["src", "Sources/Fennec", "docs/guides", "Tests/FennecCoreTests", "node/lib", "assets/img"]
         let names = ["main", "Folder", "readme", "FileFinder", "index", "Matcher", "utils", "config"]
@@ -115,17 +112,13 @@ import Testing
         #expect(result.matchCount == Self.corpus.count)
     }
 
-    // MARK: scoped search
-
     private static let prefix = "home/me/"
-    /// The corpus under `prefix`, interleaved with the same paths under another folder that's out of scope.
     private static let homeCorpus: [FuzzyMatcher.Candidate] = corpus.flatMap { candidate in
         [FuzzyMatcher.Candidate(prefix + candidate.text), FuzzyMatcher.Candidate("other/" + candidate.text)]
     }
     private static let homeScope = FuzzyMatcher.Scope(
         indices: Array(stride(from: 0, to: homeCorpus.count, by: 2)), skip: prefix.utf16.count)
 
-    /// Results as (index into `corpus`, score, positions relative to the scope).
     private func scopedSignature(_ result: FuzzyMatcher.SearchResult) -> [String] {
         let skip = Self.homeScope.skip
         return result.top.map { "\($0.index / 2):\($0.match.score):\($0.match.positions.map { $0 - skip })" }

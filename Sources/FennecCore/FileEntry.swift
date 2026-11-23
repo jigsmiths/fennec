@@ -45,7 +45,6 @@ public struct FileEntry: Sendable, Hashable, Identifiable {
     public var id: String { path }
     public var path: String { url.standardizedFileURL.path }
 
-    // Packages such as .app bundles are directories on disk but open like files.
     public var isBrowsable: Bool { isDirectory && !isPackage }
 
     public var contentType: UTType? { typeIdentifier.flatMap(UTType.init) }

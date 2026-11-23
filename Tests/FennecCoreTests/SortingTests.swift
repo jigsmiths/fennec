@@ -50,7 +50,6 @@ struct SortingTests {
         #expect(names[firstText + 1] == "b.txt")
     }
 
-    // Type IDs order these pdf, jpg, txt (com.adobe < public.*); the visible labels order them jpg, pdf, txt.
     @Test func kindSortFollowsTheVisibleLabel() {
         let entries = [
             FileEntry(url: URL(filePath: "/x/a.txt"), typeIdentifier: "public.plain-text"),

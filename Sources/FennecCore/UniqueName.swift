@@ -22,7 +22,6 @@ public enum UniqueName {
     }
 }
 
-/// Small file-system queries shared by the operations code. Symlinks are not followed.
 enum FileItem {
     static func exists(_ url: URL) -> Bool {
         (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil
@@ -32,7 +31,6 @@ enum FileItem {
         (try? FileManager.default.attributesOfItem(atPath: url.path)[.type] as? FileAttributeType) == .typeDirectory
     }
 
-    /// Total bytes and number of files in an item, counting a folder's contents.
     static func measure(_ url: URL) -> (bytes: Int64, files: Int) {
         guard isDirectory(url) else {
             let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0

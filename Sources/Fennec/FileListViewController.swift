@@ -6,7 +6,6 @@ final class FileTableView: NSTableView {
     var onQuickLook: (() -> Void)?
     var onSwitchPane: (() -> Void)?
     var onFocus: (() -> Void)?
-    /// A right-click on a row, or on empty space (-1).
     var onMenu: ((Int) -> NSMenu?)?
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -26,8 +25,6 @@ final class FileTableView: NSTableView {
     }
 }
 
-/// Return renames (like Finder), space toggles Quick Look and Tab switches panes, but only without modifiers
-/// so menu shortcuts still work.
 @MainActor
 func handleFolderKey(
     _ event: NSEvent, onRename: (() -> Void)?, onQuickLook: (() -> Void)?, onSwitchPane: (() -> Void)?
@@ -83,7 +80,6 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         tableView.style = .inset
         tableView.rowHeight = 24
         tableView.allowsMultipleSelection = true
-        // The other columns are fitted to their content, so Name absorbs all window resizing.
         tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         tableView.sortDescriptors = [NSSortDescriptor(key: sortOrder.key.rawValue, ascending: sortOrder.ascending)]
         tableView.dataSource = self
@@ -106,8 +102,6 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         view = scrollView
     }
 
-    // MARK: FolderContentView
-
     var selectedIndexes: IndexSet { tableView.selectedRowIndexes }
 
     func display(_ newRows: [FileEntry], selecting indexes: IndexSet, keepScroll: Bool) {
@@ -129,8 +123,6 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         }
     }
 
-    /// reloadData() throws away every row and cell view, so each reload rebuilt ~45 rows from scratch.
-    /// Adjusting the row count and refreshing rows in place keeps the existing views and reuses them.
     private func replaceRows(with newRows: [FileEntry]) {
         let oldCount = rows.count
         rows = newRows
@@ -146,9 +138,6 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         }
     }
 
-    // MARK: Column widths
-
-    /// Sizes Size, Modified and Kind to their widest value, then lets Name fill whatever width is left.
     private func fitColumnsToContent() {
         let fitted = [SortKey.size, .modified, .kind].compactMap { key -> (NSTableColumn, CGFloat)? in
             let index = tableView.column(withIdentifier: .init(key.rawValue))
@@ -172,11 +161,9 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
             padding = FileNameCell.padding
             font = FileNameCell.font
         case .size:
-            // Formatting every size is too slow for huge folders; these are the widest each unit gets.
             texts = rows.contains { $0.displaySize != nil }
                 ? Set([999, 999_000, 999_500_000, 999_500_000_000].map(FileFormatting.bytes)) : []
         case .modified:
-            // Files saved in the same minute share a label, so format each minute once.
             var byMinute: [Int: Date] = [:]
             for row in rows { if let date = row.modified { byMinute[Int(date.timeIntervalSince1970 / 60)] = date } }
             texts = Set(byMinute.values.map(FileDisplay.date))
@@ -185,7 +172,6 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         }
         let attributes: [NSAttributedString.Key: Any] = [.font: font]
         let widest = texts.map { ($0 as NSString).size(withAttributes: attributes).width }.max() ?? 0
-        // Leave room for the sort indicator next to the title.
         let header = column.headerCell.cellSize.width + 16
         return max(ceil(widest) + padding, header, column.minWidth)
     }
@@ -218,8 +204,6 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         return view.convert(tableView.rect(ofRow: index), from: tableView)
     }
 
-    /// Like Finder: right-clicking an unselected row selects just it, and empty space clears the selection.
-    /// Focus first, so in split view the clicked pane becomes active before its selection changes.
     private func contextMenu(at row: Int) -> NSMenu? {
         focus()
         if row < 0 {
@@ -235,11 +219,7 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         onOpen?()
     }
 
-    // MARK: Table
-
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
-
-    // MARK: Drag and drop
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         rows[row].url as NSURL
@@ -250,7 +230,6 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         proposedDropOperation dropOperation: NSTableView.DropOperation
     ) -> NSDragOperation {
         let folder = dropFolder(row: row, operation: dropOperation)
-        // Anywhere that isn't a folder row drops into the folder being shown, so highlight the whole list.
         if folder == nil { tableView.setDropRow(-1, dropOperation: .on) }
         return dropHandler?.validateDrop(info, onto: folder) ?? []
     }
@@ -312,7 +291,6 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
 final class FileNameCell: NSTableCellView {
     static let reuseID = NSUserInterfaceItemIdentifier("name")
     static let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-    /// Icon, gaps and the cloud badge around the label.
     static let padding: CGFloat = 2 + 18 + 6 + 4 + 16 + 4
 
     private let icon = NSImageView()
@@ -362,7 +340,6 @@ final class FileNameCell: NSTableCellView {
 final class TextCell: NSTableCellView {
     static let reuseID = NSUserInterfaceItemIdentifier("text")
     static let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize + 1, weight: .regular)
-    /// Label insets plus a little breathing room before the next column.
     static let padding: CGFloat = 2 + 4 + 8
 
     private let label = NSTextField(labelWithString: "")

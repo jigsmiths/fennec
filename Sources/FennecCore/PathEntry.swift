@@ -67,7 +67,6 @@ public enum PathEntry {
         }
         let folderPath = query.folder.standardizedFileURL.path
         return sorted.prefix(limit).map { entry, range in
-            // App Libraries live outside the listed folder, so they complete to their real path.
             let inFolder = entry.url.deletingLastPathComponent().standardizedFileURL.path == folderPath
             let completion = inFolder
                 ? query.typedFolder + entry.url.lastPathComponent + "/"

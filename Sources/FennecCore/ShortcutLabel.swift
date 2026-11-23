@@ -1,7 +1,6 @@
 /// Turns a menu key equivalent into the label macOS shows for it, like "⇧⌘C".
 public enum ShortcutLabel {
     public enum Modifier: CaseIterable, Sendable {
-        // Declared in the order macOS displays them.
         case control, option, shift, command
 
         public var symbol: String {

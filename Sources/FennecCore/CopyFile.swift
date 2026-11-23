@@ -1,7 +1,6 @@
 import Darwin
 import Foundation
 
-/// Wraps copyfile(3): clones on APFS when it can, keeps all metadata, reports progress and can be cancelled.
 enum CopyFile {
     private final class Context {
         let tracker: ProgressTracker

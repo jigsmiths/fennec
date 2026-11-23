@@ -1,8 +1,6 @@
 import AppKit
 import FennecCore
 
-/// A floating path field over the window, like Finder's Go to Folder, suggesting folders as you type.
-/// Tab completes the selected (or first) suggestion; Return goes to the selected one, or else the typed path.
 @MainActor
 final class GoToFolderController: NSObject {
     var onGo: ((PathEntry.Target) -> Void)?
@@ -10,7 +8,6 @@ final class GoToFolderController: NSObject {
     private static let suggestionLimit = 8
     private static let rowHeight: CGFloat = 28
 
-    /// Relative paths are typed from here.
     private let base: URL
     private let includeHidden: Bool
     private let panel = FinderPanel()
@@ -19,7 +16,6 @@ final class GoToFolderController: NSObject {
     private let status = NSTextField(labelWithString: "")
     private var tableHeight: NSLayoutConstraint!
     private var suggestions: [PathEntry.Suggestion] = []
-    /// The last folder listed, so typing within one folder only re-filters.
     private var listing: (path: String, folders: [FileEntry])?
     private var generation = 0
     private var isClosed = false
@@ -54,8 +50,6 @@ final class GoToFolderController: NSObject {
         parent?.makeKey()
     }
 
-    // MARK: Suggestions
-
     private func updateSuggestions() {
         guard !isClosed else { return }
         generation += 1
@@ -64,7 +58,6 @@ final class GoToFolderController: NSObject {
         let includeHidden = self.includeHidden
         let cached = listing?.path == query.folder.path ? listing?.folders : nil
         Task { [weak self] in
-            // Listing runs off the main thread so a slow volume doesn't stall typing.
             let folders = if let cached { cached } else {
                 await Task.detached(priority: .userInitiated) { PathEntry.folders(in: query.folder) }.value
             }
@@ -79,7 +72,6 @@ final class GoToFolderController: NSObject {
         suggestions = rows
         table.reloadData()
         tableHeight.constant = Self.rowHeight * CGFloat(rows.count)
-        // Grow or shrink downwards, keeping the field where it is.
         guard let content = panel.contentView else { return }
         content.layoutSubtreeIfNeeded()
         let height = content.fittingSize.height
@@ -95,7 +87,6 @@ final class GoToFolderController: NSObject {
 
     private func moveSelection(by delta: Int) {
         guard !suggestions.isEmpty else { return }
-        // Moving up past the first row goes back to the typed path.
         let row = table.selectedRow + delta
         if row < 0 {
             table.deselectAll(nil)
@@ -122,8 +113,6 @@ final class GoToFolderController: NSObject {
         updateSuggestions()
     }
 
-    // MARK: Going
-
     private func go() {
         let target = selectedSuggestion.map { PathEntry.Target.folder($0.url) }
             ?? PathEntry.resolve(field.stringValue, relativeTo: base)
@@ -145,8 +134,6 @@ final class GoToFolderController: NSObject {
         status.stringValue = "⇥ Complete   ↩ Go   ⎋ Close"
         status.textColor = .tertiaryLabelColor
     }
-
-    // MARK: Layout
 
     private func buildPanel() {
         panel.delegate = self
@@ -255,20 +242,17 @@ extension GoToFolderController: NSTableViewDataSource, NSTableViewDelegate {
         return cell
     }
 
-    // The field keeps focus, so draw the selection as if the table had it.
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         EmphasizedRowView()
     }
 }
 
 extension GoToFolderController: NSWindowDelegate {
-    // Clicking back into the window dismisses the panel, like Find.
     func windowDidResignKey(_ notification: Notification) {
         close()
     }
 }
 
-/// One suggestion: a folder icon and the name with the typed part in bold.
 private final class SuggestionCell: NSTableCellView {
     private let icon = NSImageView()
     private let name = NSTextField(labelWithString: "")

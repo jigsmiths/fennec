@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import FennecCore
 
-/// Runs only the script's locate step (no Finder involved) and returns what Finder would be told to delete.
 private func locate(_ url: URL) throws -> String {
     let wrapper = FinderTrash.locateHandler + """
 

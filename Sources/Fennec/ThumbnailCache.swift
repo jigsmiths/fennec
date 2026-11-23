@@ -3,7 +3,6 @@ import FennecCore
 import QuickLookThumbnailing
 import UniformTypeIdentifiers
 
-/// Image, PDF and video thumbnails, generated off the main thread and cached by path and modified date.
 @MainActor
 final class ThumbnailCache {
     static let shared = ThumbnailCache()
@@ -14,7 +13,6 @@ final class ThumbnailCache {
         cache.countLimit = 2000
     }
 
-    /// Returns the pending request, if one was started, so a reused grid tile can cancel it.
     @discardableResult
     func thumbnail(
         for entry: FileEntry, size: CGFloat, completion: @escaping @MainActor @Sendable (NSImage) -> Void

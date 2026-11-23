@@ -5,7 +5,6 @@ import Quartz
 @MainActor
 final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSMenuItemValidation {
     var onClose: (() -> Void)?
-    /// Something the session file records changed.
     var onStateChange: (() -> Void)?
 
     private let sidebar = SidebarViewController()
@@ -21,7 +20,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var finder: FileFinderController?
     private var finderIndex: FinderIndex?
     private var goToFolderPanel: GoToFolderController?
-    /// The app-wide index of home, if there is one.
     var sharedFinderIndex: FinderIndex?
 
     private static let viewModeID = NSToolbarItem.Identifier("viewMode")
@@ -31,10 +29,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private static let previewWidthSetKey = "previewWidthSet"
     private static let goToFolderPathKey = "goToFolderLastPath"
 
-    /// The active pane's folder view. Commands, the preview and Quick Look act on it.
     private var folder: FolderViewController { panes.active.folder }
 
-    /// The folder the active pane shows.
     var activeFolder: URL { panes.active.currentFolder }
 
     var windowState: WindowState {
@@ -62,10 +58,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         splitController.addSplitViewItem(sidebarItem)
         splitController.addSplitViewItem(NSSplitViewItem(viewController: PanesContainer(panes, statusBar: statusBar)))
         splitController.addSplitViewItem(previewItem)
-        // Sidebar and preview widths are shared by all windows; each window's pane divider is in the session.
         splitController.splitView.identifier = NSUserInterfaceItemIdentifier("FennecSplit")
         splitController.splitView.autosaveName = "FennecSplit"
-        // After the preview exists: loading a pane's folder updates the preview.
         panes.start()
 
         window.delegate = self
@@ -99,7 +93,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         activePaneChanged()
     }
 
-    /// Restores a saved frame if it's still on a screen; otherwise cascades from the frontmost window.
     private func place(_ window: NSWindow, frame: CGRect?) {
         if let frame, NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }) {
             window.setFrame(frame, display: false)
@@ -118,8 +111,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         updateMinimumSize(split: panes.isSplit)
         onStateChange?()
     }
-
-    // MARK: Panes
 
     private func configure(_ pane: PaneController) {
         let folder = pane.folder
@@ -143,7 +134,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    /// Points the sidebar, title, view mode switch and preview at the active pane.
     private func activePaneChanged() {
         let url = activeFolder
         sidebar.highlight(url)
@@ -152,7 +142,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         selectionChanged(folder.selectedEntries)
     }
 
-    /// Selects newly placed items in every pane showing the folder they landed in.
     private func reloadPanes(showing urls: [URL]) {
         for pane in panes.panes {
             let path = pane.currentFolder.standardizedFileURL.path
@@ -165,7 +154,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         panes.toggleSplit()
     }
 
-    /// Shows the selected folder, or this pane's folder, in the other pane.
     @objc func openInOtherPane(_ sender: Any?) {
         let selected = folder.selectedEntries
         let target = selected.count == 1 && selected[0].isBrowsable ? selected[0].url : activeFolder
@@ -189,8 +177,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         operations.transfer(selectedURLs, to: other.currentFolder, mode: mode)
     }
 
-    // MARK: Navigation
-
     @objc func goBack(_ sender: Any?) {
         panes.active.goBack()
     }
@@ -207,7 +193,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if let url = sender.representedObject as? URL { panes.active.navigate(to: url) }
     }
 
-    /// Opens a typed path in the active pane, starting from the last path gone to.
     @objc func goToFolder(_ sender: Any?) {
         guard let window else { return }
         goToFolderPanel?.close()
@@ -235,14 +220,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         folder.openSelection()
     }
 
-    /// Fuzzy-finds everything under the active pane's folder.
     @objc func findFiles(_ sender: Any?) {
         guard let window else { return }
         finder?.close()
         let pane = panes.active
         let folder = pane.currentFolder, includeHidden = panes.showsHidden
-        // The app's home index covers most searches; anything else gets this window's own index, kept for
-        // the last folder searched so searching it (or inside it) again is instant.
         let index: FinderIndex
         let relativePath: String
         if let shared = sharedFinderIndex, let path = shared.relativePath(of: folder, includeHidden: includeHidden) {
@@ -268,8 +250,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         finder.show(over: window)
         self.finder = finder
     }
-
-    // MARK: View
 
     @objc func toggleHiddenFiles(_ sender: Any?) {
         panes.setShowHidden(!panes.showsHidden)
@@ -306,7 +286,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         onStateChange?()
     }
 
-    /// Opens the pane at 300pt the first time; after that the split view's autosave keeps the user's width.
     private func applyDefaultPreviewWidth() {
         guard !previewItem.isCollapsed, !UserDefaults.standard.bool(forKey: Self.previewWidthSetKey) else { return }
         let splitView = splitController.splitView
@@ -322,8 +301,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             QLPreviewPanel.shared().reloadData()
         }
     }
-
-    // MARK: Quick Look panel
 
     @objc func toggleQuickLook(_ sender: Any?) {
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible {
@@ -352,8 +329,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    // MARK: File operations
-
     private var selectedURLs: [URL] { folder.selectedEntries.map(\.url) }
 
     @objc func copy(_ sender: Any?) {
@@ -369,7 +344,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         paste(clipboard.urls, mode: clipboard.isCut ? .move : .copy)
     }
 
-    /// Cmd+Option+V: move what's on the clipboard here, like Finder.
     @objc func pasteAsMove(_ sender: Any?) {
         paste(FileClipboard.read().urls, mode: .move)
     }
@@ -390,7 +364,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     private var inTrash: Bool { folder.currentDirectory.map(FinderTrash.isTrash) ?? false }
 
-    /// Only items Fennec trashed can go back: Finder's own record of the rest needs Full Disk Access.
     private var canPutBack: Bool {
         inTrash && !selectedURLs.isEmpty && selectedURLs.allSatisfy { TrashLedger.shared.original(of: $0) != nil }
     }
@@ -423,7 +396,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         NSWorkspace.shared.open(selectedURLs, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
     }
 
-    /// The selection, or the folder being shown when nothing is selected, like Finder.
     private var selectedOrFolderURLs: [URL] {
         let selected = selectedURLs
         return selected.isEmpty ? folder.currentDirectory.map { [$0] } ?? [] : selected
@@ -436,7 +408,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             : entries)
     }
 
-    /// Walks the selected folders again, or the folder being shown when nothing is selected.
     @objc func recalculateFolderStats(_ sender: Any?) {
         FolderStatsService.shared.recalculate(foldersToMeasure)
     }
@@ -447,12 +418,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         return entries.filter(\.isDirectory).map(\.url)
     }
 
-    /// Pins the selected folders, or the folder being shown when nothing is selected.
     @objc func addToSidebar(_ sender: Any?) {
         PinnedFolders.update { $0.add(foldersToPin.map(\.path)) }
     }
 
-    /// Nothing when the selection includes files, so a mixed selection doesn't pin half of itself.
     private var foldersToPin: [URL] {
         let entries = folder.selectedEntries
         if entries.isEmpty { return folder.currentDirectory.map { [$0] } ?? [] }
@@ -467,7 +436,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         FileClipboard.writePaths(FileInfoFormatting.enclosingFolders(of: selectedOrFolderURLs))
     }
 
-    /// File > Share…, anchored on the first selected item.
     @objc func share(_ sender: Any?) {
         guard !selectedURLs.isEmpty else { return }
         let (view, rect) = folder.shareAnchor()
@@ -490,7 +458,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     private func rename(_ url: URL, to name: String, in pane: PaneController) {
         Task {
-            // On failure, reloading puts the real name back over the rejected text.
             let renamed = await operations.rename(url, to: name)
             pane.folder.reload(selecting: [renamed ?? url])
         }
@@ -501,8 +468,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         operationsItem?.isHidden = operations.visibleJobs.isEmpty
     }
 
-    // MARK: Menu validation
-
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         let history = panes.active.history
         switch menuItem.action {
@@ -511,7 +476,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(goUp(_:)): return history.canGoUp
         case #selector(toggleQuickLook(_:)): return !folder.selectedEntries.isEmpty
         case #selector(putBack(_:)): return canPutBack
-        // Renaming or adding items inside the Trash would break Put Back.
         case #selector(moveToTrash(_:)): return !inTrash && !folder.selectedEntries.isEmpty
         case #selector(newFolder(_:)): return !inTrash
         case #selector(recalculateFolderStats(_:)): return !inTrash && !foldersToMeasure.isEmpty
@@ -543,8 +507,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         return true
     }
 
-    // MARK: Window
-
     func windowWillClose(_ notification: Notification) {
         onClose?()
     }
@@ -556,8 +518,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func windowDidEndLiveResize(_ notification: Notification) {
         onStateChange?()
     }
-
-    // MARK: Toolbar
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, Self.operationsID, Self.viewModeID,
@@ -623,7 +583,6 @@ extension MainWindowController: @preconcurrency QLPreviewPanelDataSource, @preco
         return index < entries.count ? entries[index].url as NSURL : nil
     }
 
-    // Arrow keys in the panel move the selection in the folder, like Finder.
     func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool {
         guard event.type == .keyDown else { return false }
         folder.forwardKey(event)

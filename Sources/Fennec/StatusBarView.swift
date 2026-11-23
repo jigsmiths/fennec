@@ -1,12 +1,9 @@
 import AppKit
 import FennecCore
 
-/// The strip under the panes: what the active folder holds or what's selected on the left, and any folder
-/// sizing that has been running for a while on the right. Clicking that lists the walk and its queue.
 @MainActor
 final class StatusBarView: NSView {
     static let height: CGFloat = 24
-    /// Most walks finish in a blink; only ones that run longer than this are worth showing.
     private static let showScansAfter = Duration.seconds(1)
     private static let font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
 
@@ -79,7 +76,6 @@ final class StatusBarView: NSView {
     private func updateScan() {
         let service = FolderStatsService.shared
         if popover.isShown { scansList.show(current: service.current, queued: service.queued) }
-        // Once showing, keep going until the queue is done, so short walks after a long one don't blink.
         let showing = !scanButton.isHidden
         guard let scan = service.current, showing || scan.started.duration(to: .now) > Self.showScansAfter else {
             if !showing || service.queued.isEmpty { hideScan() }
@@ -115,12 +111,10 @@ final class StatusBarView: NSView {
     }
 }
 
-/// The popover listing the walk in progress and the folders waiting, each with a Cancel button.
 @MainActor
 private final class ScansListController: NSViewController {
     private static let shownQueue = 8
     private let stack = NSStackView()
-    /// The paths the rows were built for, so progress updates only change text.
     private var builtFor: [String] = []
     private var currentDetail: NSTextField?
 
@@ -206,8 +200,6 @@ private final class ClosureButton: NSButton {
     @objc private func run(_ sender: Any?) { handler?() }
 }
 
-/// The panes with the status bar along their bottom edge. Its view loads with the window's, after the panes
-/// have their split items: loading a split view controller's view before that throws.
 @MainActor
 final class PanesContainer: NSViewController {
     private let panes: NSViewController

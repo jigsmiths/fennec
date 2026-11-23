@@ -39,7 +39,6 @@ public struct Favorites: Codable, Equatable, Sendable {
     }
 }
 
-/// Saves the pinned folders next to the session file.
 public enum FavoritesStore {
     public static var defaultURL: URL {
         URL.applicationSupportDirectory.appending(path: "Fennec/favorites.json")

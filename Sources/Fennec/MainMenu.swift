@@ -14,7 +14,6 @@ enum MainMenu {
             item("Quit Fennec", #selector(NSApplication.terminate(_:)), "q"),
         ]))
 
-        // Cmd+Down opens too, like Finder; hidden so the menu shows one Open item.
         let openWithArrow = item("Open", #selector(MainWindowController.openSelection(_:)), arrow(NSDownArrowFunctionKey))
         openWithArrow.isHidden = true
         openWithArrow.allowsKeyEquivalentWhenHidden = true
@@ -133,6 +132,5 @@ enum MainMenu {
         String(Character(UnicodeScalar(UInt16(key))!))
     }
 
-    /// The Delete key in a menu shortcut (Cmd+Delete for Move to Trash).
     private static let backspace = String(Character(UnicodeScalar(UInt8(NSBackspaceCharacter))))
 }

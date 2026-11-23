@@ -11,8 +11,6 @@ private final class Counter: @unchecked Sendable {
 }
 
 struct BlockingIOTests {
-    // Reads stuck on a permission prompt or a dead share must all be able to start, and must not
-    // stop other reads from running. On a fixed-size pool only about one per core would ever start.
     @Test(.timeLimit(.minutes(1)))
     func stuckJobsDoNotStarveOtherJobs() async throws {
         let gate = DispatchSemaphore(value: 0)

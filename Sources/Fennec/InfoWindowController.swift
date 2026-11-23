@@ -1,13 +1,10 @@
 import AppKit
 import FennecCore
 
-/// A Get Info panel for one item: kind, size, location, dates, owner and permissions.
-/// One panel per item, like Finder; asking again for the same item brings its panel forward.
 @MainActor
 final class InfoWindowController: NSWindowController, NSWindowDelegate {
     private static var open: [String: InfoWindowController] = [:]
 
-    /// Opens panels for up to 10 items, cascading them so they don't stack exactly.
     static func show(_ entries: [FileEntry]) {
         var previous: NSWindow?
         for entry in entries.prefix(10) {
@@ -139,7 +136,6 @@ final class InfoWindowController: NSWindowController, NSWindowDelegate {
     }
 }
 
-/// Escape and Cmd+W close the panel.
 private final class InfoPanel: NSPanel {
     override func cancelOperation(_ sender: Any?) {
         close()

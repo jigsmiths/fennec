@@ -7,7 +7,6 @@ public enum FileFormatting {
         if let description = entry.contentType?.localizedDescription, !description.isEmpty {
             return description
         }
-        // Types macOS doesn't know (.go, .jsonl) have no description, so name them by extension.
         let ext = entry.url.pathExtension
         return ext.isEmpty ? "Document" : "\(ext.uppercased()) file"
     }
@@ -37,7 +36,6 @@ public enum FileFormatting {
         sizeFormatter.string(fromByteCount: count)
     }
 
-    // ByteCountFormatter is thread-safe for formatting once configured.
     nonisolated(unsafe) private static let sizeFormatter: ByteCountFormatter = {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file

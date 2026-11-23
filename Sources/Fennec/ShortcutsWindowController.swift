@@ -1,13 +1,10 @@
 import AppKit
 import FennecCore
 
-/// A panel listing every keyboard shortcut, grouped by menu. Built from the live main menu each time it opens,
-/// so it always matches the real key equivalents.
 @MainActor
 final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate {
     static let shared = ShortcutsWindowController()
 
-    /// Keys the folder views handle themselves, so no menu item lists them.
     private static let folderKeys: [(String, String)] = [
         ("Rename", ShortcutLabel.text(key: "\r", modifiers: [])),
         ("Quick Look", ShortcutLabel.text(key: " ", modifiers: [])),
@@ -107,7 +104,6 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
         return true
     }
 
-    /// Esc clears the search first, then closes the panel.
     private func cancel() {
         if searchField.stringValue.isEmpty {
             close()
@@ -155,7 +151,6 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
             for item in menu.items where !item.isSeparatorItem && !item.keyEquivalent.isEmpty {
                 if let action = item.action, systemActions.contains(action) { continue }
                 let keys = ShortcutLabel.text(key: item.keyEquivalent, modifiers: modifiers(item.keyEquivalentModifierMask))
-                // A hidden second key for the same command (Cmd+Down for Open) shares its row.
                 if let index = rows.firstIndex(where: { $0.0 == item.title }) {
                     rows[index].1 += " or \(keys)"
                 } else {
@@ -179,7 +174,6 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
     }
 }
 
-/// Escape closes the panel, like other macOS info panels, unless `onCancel` handles it first.
 private final class ShortcutsPanel: NSPanel {
     var onCancel: (() -> Void)?
 

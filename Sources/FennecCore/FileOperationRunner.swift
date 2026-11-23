@@ -13,10 +13,8 @@ public struct FileOperationRunner: Sendable {
         public let step: UndoStep?
     }
 
-    /// Moves the items to the Trash and returns where each one ended up, in the same order.
     private let trashItems: @Sendable ([URL]) throws -> [URL]
 
-    /// `trash` is injectable so tests don't fill the real Trash.
     public init(trash: @escaping @Sendable ([URL]) throws -> [URL] = FinderTrash.trash) {
         trashItems = trash
     }
@@ -24,8 +22,6 @@ public struct FileOperationRunner: Sendable {
     private func trashItem(_ url: URL) throws -> URL {
         try trashItems([url])[0]
     }
-
-    // MARK: Copy and move
 
     /// `forceCopy` makes a same-disk move take the copy, verify, delete path, as between disks.
     public func transfer(
@@ -82,7 +78,6 @@ public struct FileOperationRunner: Sendable {
         var target = destination.appendingPathComponent(name)
 
         if source.deletingLastPathComponent().standardizedFileURL.path == destinationPath {
-            // Moving into its own folder changes nothing; copying there makes "name 2", like Finder.
             if job.mode == .move {
                 job.tracker.finishItem()
                 return source
@@ -119,7 +114,6 @@ public struct FileOperationRunner: Sendable {
             }
             if job.mode == .move {
                 try await BlockingIO.run {
-                    // Only delete the original once the copy is known to be complete.
                     let copied = FileItem.measure(finalTarget)
                     guard copied.bytes == size.bytes, copied.files == size.files else {
                         try? FileManager.default.removeItem(at: finalTarget)
@@ -146,15 +140,12 @@ public struct FileOperationRunner: Sendable {
         }
         guard job.mode == .move else { return }
         let removed = try await BlockingIO.run {
-            // Items skipped during the merge stay behind, and so does their folder.
             guard try FileManager.default.contentsOfDirectory(atPath: source.path).isEmpty else { return false }
             try FileManager.default.removeItem(at: source)
             return true
         }
         if removed { result.steps.append(.removedFolder(source)) }
     }
-
-    // MARK: Trash, rename, new folder
 
     public func trash(_ urls: [URL]) throws -> [UndoStep] {
         guard !urls.isEmpty else { return [] }
@@ -196,8 +187,6 @@ public struct FileOperationRunner: Sendable {
         return Placed(url: url, step: .created(url))
     }
 
-    // MARK: Undo
-
     /// Reverses the steps, newest first. Created items go to the Trash rather than being deleted.
     public func undo(_ steps: [UndoStep]) throws {
         for step in steps.reversed() {
@@ -217,7 +206,6 @@ public struct FileOperationRunner: Sendable {
     }
 }
 
-/// Byte and item counts for one transfer, reported as files are copied.
 final class ProgressTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var progress: OperationProgress
@@ -245,7 +233,6 @@ final class ProgressTracker: @unchecked Sendable {
         }
     }
 
-    /// Bytes copied so far of the file currently being copied.
     func fileProgress(_ copied: Int64) {
         update { progress.completedBytes = min(itemBaseBytes + finishedFileBytes + copied, itemBaseBytes + itemBytes) }
     }

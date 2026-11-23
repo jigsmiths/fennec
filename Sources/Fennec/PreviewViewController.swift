@@ -10,7 +10,17 @@ final class PreviewViewController: NSViewController {
     private let detailsLabel = NSTextField(wrappingLabelWithString: "")
     private var pendingRender: Task<Void, Never>?
     private var folderCount: Task<Void, Never>?
-    private var shownKey: String?
+    private var shownKey: ShownKey?
+
+    private struct ShownKey: Equatable {
+        struct Entry: Equatable {
+            let path: String
+            let modified: TimeInterval
+        }
+
+        let entries: [Entry]
+        let includeHidden: Bool
+    }
 
     override func loadView() {
         preview.shouldCloseWithWindow = true
@@ -45,8 +55,9 @@ final class PreviewViewController: NSViewController {
     }
 
     func show(_ entries: [FileEntry], includeHidden: Bool) {
-        let key = entries.map { "\($0.path)|\($0.modified?.timeIntervalSince1970 ?? 0)" }.joined(separator: "\n")
-            + "|\(includeHidden)"
+        let key = ShownKey(
+            entries: entries.map { .init(path: $0.path, modified: $0.modified?.timeIntervalSince1970 ?? 0) },
+            includeHidden: includeHidden)
         guard key != shownKey else { return }
         pendingRender?.cancel()
         pendingRender = Task { [weak self] in

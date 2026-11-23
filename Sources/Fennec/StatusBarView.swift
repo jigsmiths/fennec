@@ -12,6 +12,8 @@ final class StatusBarView: NSView {
     private let spinner = NSProgressIndicator()
     private let popover = NSPopover()
     private let scansList = ScansListController()
+    // Starts true to match the button's initial visibility; the first updateScan settles it.
+    private var isShowingScan = true
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -76,12 +78,13 @@ final class StatusBarView: NSView {
     private func updateScan() {
         let service = FolderStatsService.shared
         if popover.isShown { scansList.show(current: service.current, queued: service.queued) }
-        let showing = !scanButton.isHidden
-        guard let scan = service.current, showing || scan.started.duration(to: .now) > Self.showScansAfter else {
-            if !showing || service.queued.isEmpty { hideScan() }
+        guard let scan = service.current,
+              isShowingScan || scan.started.duration(to: .now) > Self.showScansAfter else {
+            if !isShowingScan || service.queued.isEmpty { hideScan() }
             return
         }
 
+        isShowingScan = true
         scanButton.isHidden = false
         spinner.isHidden = false
         scanButton.title = StatusText.scan(
@@ -98,6 +101,7 @@ final class StatusBarView: NSView {
     }
 
     private func hideScan() {
+        isShowingScan = false
         scanButton.isHidden = true
         spinner.isHidden = true
         spinner.stopAnimation(nil)

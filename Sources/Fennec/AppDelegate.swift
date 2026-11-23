@@ -5,15 +5,16 @@ import FennecCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windows: [MainWindowController] = []
     private let homeIndex: FinderIndex? = Bench.enabled ? nil : FinderIndex(root: Places.home, includeHidden: false)
-    private var savesSession = true
+    private let launchFolder = AppDelegate.folderArgument()
+    private var restoresSession: Bool { launchFolder == nil }
+    private var isTerminating = false
     private var saveTask: Task<Void, Never>?
     private let sessionURL = ProcessInfo.processInfo.environment["FENNEC_SESSION_FILE"]
         .map { URL(filePath: $0) } ?? SessionStore.defaultURL
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.make()
-        if let folder = folderArgument() {
-            savesSession = false
+        if let folder = launchFolder {
             openWindow(WindowDefaults.window(at: folder))
         } else {
             let session = SessionStore.load(from: sessionURL, fallback: Places.home)
@@ -31,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         saveSession()
-        savesSession = false
+        isTerminating = true
         return .terminateNow
     }
 
@@ -67,6 +68,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scheduleSave()
     }
 
+    private var savesSession: Bool { restoresSession && !isTerminating }
+
     private func scheduleSave() {
         guard savesSession else { return }
         saveTask?.cancel()
@@ -84,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         try? SessionStore.save(state, to: sessionURL)
     }
 
-    private func folderArgument() -> URL? {
+    private static func folderArgument() -> URL? {
         let argument = CommandLine.arguments.dropFirst().first { !$0.hasPrefix("-") }
         var isDirectory: ObjCBool = false
         guard let argument, FileManager.default.fileExists(atPath: argument, isDirectory: &isDirectory),

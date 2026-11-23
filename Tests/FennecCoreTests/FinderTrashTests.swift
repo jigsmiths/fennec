@@ -35,25 +35,74 @@ struct FinderTrashTests {
         #expect(!located.contains("Target"))
     }
 
-    @Test func symlinksSkipFinderAndOrderIsKept() throws {
+    private static let noPermission = NSError(domain: NSCocoaErrorDomain, code: NSFileWriteNoPermissionError)
+
+    private final class FakeFinder {
+        var calls: [[URL]] = []
+        func trash(_ urls: [URL]) -> [URL] {
+            calls.append(urls)
+            return urls.map { URL(filePath: "/Finder/\($0.lastPathComponent)") }
+        }
+    }
+
+    @Test func systemTrashIsTriedFirstWithoutFinder() throws {
         let dir = try TempDir()
         try dir.file("a.txt")
-        try dir.file("c.txt")
         let a = dir.url.appendingPathComponent("a.txt")
-        let link = dir.url.appendingPathComponent("b-link")
-        let c = dir.url.appendingPathComponent("c.txt")
-        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: a)
-        var finderCalls: [[URL]] = []
-        var systemCalls: [URL] = []
+        let finder = FakeFinder()
 
         let trashed = try FinderTrash.trash(
-            [a, link, c],
-            finder: { urls in finderCalls.append(urls); return urls.map { URL(filePath: "/Finder/\($0.lastPathComponent)") } },
-            system: { url in systemCalls.append(url); return URL(filePath: "/System/\(url.lastPathComponent)") })
+            [a], finder: finder.trash, system: { URL(filePath: "/System/\($0.lastPathComponent)") })
 
-        #expect(finderCalls == [[a, c]])
-        #expect(systemCalls == [link])
-        #expect(trashed.map(\.path) == ["/Finder/a.txt", "/System/b-link", "/Finder/c.txt"])
+        #expect(finder.calls.isEmpty)
+        #expect(trashed.map(\.path) == ["/System/a.txt"])
+    }
+
+    @Test func permissionDeniedFallsBackToFinderAndOrderIsKept() throws {
+        let dir = try TempDir()
+        for name in ["a.txt", "b.txt", "d.txt"] { try dir.file(name) }
+        let a = dir.url.appendingPathComponent("a.txt")
+        let b = dir.url.appendingPathComponent("b.txt")
+        let link = dir.url.appendingPathComponent("c-link")
+        let d = dir.url.appendingPathComponent("d.txt")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: a)
+        let finder = FakeFinder()
+
+        let trashed = try FinderTrash.trash(
+            [a, b, link, d], finder: finder.trash,
+            system: { url in
+                if url == b || url == d { throw Self.noPermission }
+                return URL(filePath: "/System/\(url.lastPathComponent)")
+            })
+
+        #expect(finder.calls == [[b, d]])
+        #expect(trashed.map(\.path) == ["/System/a.txt", "/Finder/b.txt", "/System/c-link", "/Finder/d.txt"])
+    }
+
+    @Test func symlinksNeverGoToFinder() throws {
+        let dir = try TempDir()
+        try dir.file("a.txt")
+        let link = dir.url.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: dir.url.appendingPathComponent("a.txt"))
+        let finder = FakeFinder()
+
+        #expect(throws: NSError.self) {
+            try FinderTrash.trash([link], finder: finder.trash, system: { _ in throw Self.noPermission })
+        }
+        #expect(finder.calls.isEmpty)
+    }
+
+    @Test func otherSystemErrorsAreThrown() throws {
+        let dir = try TempDir()
+        try dir.file("a.txt")
+        let finder = FakeFinder()
+
+        #expect(throws: NSError.self) {
+            try FinderTrash.trash(
+                [dir.url.appendingPathComponent("a.txt")], finder: finder.trash,
+                system: { _ in throw NSError(domain: NSCocoaErrorDomain, code: NSFileNoSuchFileError) })
+        }
+        #expect(finder.calls.isEmpty)
     }
 
     @Test func colonsInNamesBecomeFinderSlashes() {

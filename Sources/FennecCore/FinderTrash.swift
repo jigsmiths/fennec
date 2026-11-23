@@ -1,7 +1,7 @@
 import Foundation
 
-/// Moves items to the Trash by asking Finder. macOS's own trash calls refuse iCloud items that another
-/// app created (permission error 513) unless the caller is Finder, and Finder also records Put Back.
+/// Moves items to the Trash. macOS's own trash call can refuse iCloud items that another app created
+/// (permission error 513) unless the caller is Finder, so those are handed to Finder.
 public enum FinderTrash {
     public enum Failure: Error, Equatable, LocalizedError {
         case automationDenied
@@ -87,18 +87,31 @@ public enum FinderTrash {
         _ = try runFinder("tell application \"Finder\" to empty trash", arguments: [])
     }
 
-    /// Finder refuses to trash symlinks, so those take the system call, which moves the link itself.
+    /// Finder's scripting can't trash undownloaded iCloud folders or symlinks, so it only gets other items the system refuses.
     static func trash(
         _ urls: [URL], finder: ([URL]) throws -> [URL], system: (URL) throws -> URL
     ) throws -> [URL] {
-        let isLink = urls.map { (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true }
-        let files = zip(urls, isLink).filter { !$0.1 }.map(\.0)
-        var fromFinder = try (files.isEmpty ? [] : finder(files)).makeIterator()
-        return try zip(urls, isLink).map { url, link in
-            if link { return try system(url) }
-            guard let trashed = fromFinder.next() else { throw Failure.finder("Finder didn't say where every item went.") }
-            return trashed
+        var trashed: [URL?] = []
+        var refused: [Int] = []
+        for (index, url) in urls.enumerated() {
+            do {
+                trashed.append(try system(url))
+            } catch let error as NSError where error.domain == NSCocoaErrorDomain
+                && error.code == NSFileWriteNoPermissionError && !isSymbolicLink(url) {
+                trashed.append(nil)
+                refused.append(index)
+            }
         }
+        if !refused.isEmpty {
+            let fromFinder = try finder(refused.map { urls[$0] })
+            guard fromFinder.count == refused.count else { throw Failure.finder("Finder didn't say where every item went.") }
+            for (index, url) in zip(refused, fromFinder) { trashed[index] = url }
+        }
+        return trashed.compactMap { $0 }
+    }
+
+    private static func isSymbolicLink(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
     }
 
     private static func systemTrash(_ url: URL) throws -> URL {

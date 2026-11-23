@@ -36,7 +36,7 @@ enum CopyFile {
         }
 
         copyfile_state_set(state, UInt32(COPYFILE_STATE_STATUS_CB), unsafeBitCast(callback, to: UnsafeRawPointer.self))
-        copyfile_state_set(state, UInt32(COPYFILE_STATE_STATUS_CTX), Unmanaged.passUnretained(context).toOpaque())
+        copyfile_state_set(state, UInt32(COPYFILE_STATE_STATUS_CTX), Unmanaged.passUnretained(context).toOpaque()) // lint-allow: copyfile is synchronous and withExtendedLifetime keeps context alive, expires 2027-11-23, approved-by bvdwalt
 
         if isCancelled() { throw FileOperationError.cancelled }
         let flags = copyfile_flags_t(

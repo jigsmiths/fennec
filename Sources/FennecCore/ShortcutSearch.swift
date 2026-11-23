@@ -44,7 +44,7 @@ public enum ShortcutSearch {
                 }
                 let key: String
                 if let named = Self.keyWords[rest.lowercased()] {
-                    key = named
+                    key = ShortcutLabel.keySymbol(named).uppercased()
                 } else if rest.count == 1 {
                     key = rest.uppercased()
                 } else {
@@ -78,9 +78,9 @@ public enum ShortcutSearch {
         ]
 
         private static let keyWords: [String: String] = [
-            "up": "↑", "down": "↓", "left": "←", "right": "→",
-            "return": "↩", "enter": "↩", "tab": "⇥", "space": "SPACE",
-            "delete": "⌫", "backspace": "⌫", "esc": "⎋", "escape": "⎋",
+            "up": "\u{F700}", "down": "\u{F701}", "left": "\u{F702}", "right": "\u{F703}",
+            "return": "\r", "enter": "\r", "tab": "\t", "space": " ",
+            "delete": "\u{7F}", "backspace": "\u{7F}", "esc": "\u{1B}", "escape": "\u{1B}",
         ]
     }
 }

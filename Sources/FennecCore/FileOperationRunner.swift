@@ -84,7 +84,7 @@ public struct FileOperationRunner: Sendable {
                 return source
             }
             target = UniqueName.available(for: name, in: destination)
-        } else if FileItem.exists(target) {
+        } else if FileItem.existsWithoutFollowingLinks(target) {
             let isFolder = FileItem.isDirectory(source) && FileItem.isDirectory(target)
             switch await job.onConflict(Conflict(source: source, existing: target, isFolder: isFolder)) {
             case .skip:
@@ -155,7 +155,7 @@ public struct FileOperationRunner: Sendable {
 
     /// Moves trashed items back where they came from, recreating missing folders. Never replaces an item.
     public func putBack(_ items: [(trashed: URL, original: URL)]) throws -> [UndoStep] {
-        if let taken = items.first(where: { FileItem.exists($0.original) }) {
+        if let taken = items.first(where: { FileItem.existsWithoutFollowingLinks($0.original) }) {
             throw FileOperationError.alreadyExists(taken.original.lastPathComponent)
         }
         var steps: [UndoStep] = []
@@ -177,7 +177,7 @@ public struct FileOperationRunner: Sendable {
 
         let target = url.deletingLastPathComponent().appendingPathComponent(name)
         let caseOnly = name.lowercased() == url.lastPathComponent.lowercased()
-        if !caseOnly, FileItem.exists(target) { throw FileOperationError.alreadyExists(name) }
+        if !caseOnly, FileItem.existsWithoutFollowingLinks(target) { throw FileOperationError.alreadyExists(name) }
         try FileItem.move(url, to: target)
         return Renamed(url: target, step: .moved(from: url, to: target))
     }

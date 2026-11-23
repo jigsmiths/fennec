@@ -34,6 +34,21 @@ public actor FolderStatsStore {
             """
         static let statsColumns = "bytes, allocated, files, subfolders, newest, calculated, duration_ms, incomplete"
 
+        static func statsValues(_ stats: FolderStats) -> [Int64?] {
+            [stats.bytes, stats.allocated, stats.files, stats.subfolders,
+             stats.newest.map { Int64($0.timeIntervalSince1970) }, Int64(stats.calculated.timeIntervalSince1970),
+             stats.durationMilliseconds, stats.incomplete ? 1 : 0]
+        }
+
+        static func stats(from row: Row, at offset: Int32) -> FolderStats {
+            FolderStats(
+                bytes: row.int64(offset), allocated: row.int64(offset + 1), files: row.int64(offset + 2),
+                subfolders: row.int64(offset + 3),
+                newest: row.isNull(offset + 4) ? nil : Date(timeIntervalSince1970: Double(row.int64(offset + 4))),
+                calculated: Date(timeIntervalSince1970: Double(row.int64(offset + 5))),
+                durationMilliseconds: row.int64(offset + 6), incomplete: row.int64(offset + 7) != 0)
+        }
+
         static let child = "SELECT id FROM folders WHERE parent = ?1 AND name = ?2"
         static let insertName = "INSERT INTO folders (parent, name) VALUES (?1, ?2)"
         static let stats = "SELECT \(statsColumns) FROM folders WHERE id = ?1 AND calculated IS NOT NULL"
@@ -91,13 +106,13 @@ public actor FolderStatsStore {
 
     public func stats(for folder: URL) throws -> FolderStats? {
         guard let id = try find(Self.components(folder)) else { return nil }
-        return try db.query(SQL.stats, [id]) { Self.stats(from: $0, at: 0) }.first
+        return try db.query(SQL.stats, [id]) { SQL.stats(from: $0, at: 0) }.first
     }
 
     /// Stats for the folders directly inside `folder` that have any, keyed by `normalized(name)`.
     public func childStats(of folder: URL) throws -> [String: FolderStats] {
         guard let id = try find(Self.components(folder)) else { return [:] }
-        let rows = try db.query(SQL.childStats, [id]) { ($0.text(0), Self.stats(from: $0, at: 1)) }
+        let rows = try db.query(SQL.childStats, [id]) { ($0.text(0), SQL.stats(from: $0, at: 1)) }
         return Dictionary(rows, uniquingKeysWith: { first, _ in first })
     }
 
@@ -113,12 +128,13 @@ public actor FolderStatsStore {
         try db.transaction {
             let rootID = try ensure(Self.components(root))
             try db.run(SQL.deleteChildren, rootID)
-            try db.run(SQL.updateStats, [rootID] + Self.values(first.stats))
+            try db.run(SQL.updateStats, [rootID] + SQL.statsValues(first.stats))
             var ids = [rootID]
             ids.reserveCapacity(walk.folders.count)
             for folder in walk.folders.dropFirst() {
                 let parent = ids[folder.parent]
-                try db.run(SQL.insertFolder, [parent] + Self.values(folder.stats), name: Self.normalized(folder.name))
+                try db.run(
+                    SQL.insertFolder, [parent] + SQL.statsValues(folder.stats), thenText: Self.normalized(folder.name))
                 ids.append(db.lastInsertedID)
             }
         }
@@ -127,7 +143,7 @@ public actor FolderStatsStore {
     private func find(_ components: [String]) throws -> Int64? {
         var id = Self.rootID
         for name in components {
-            guard let child = try db.query(SQL.child, [id], name: name, { $0.int64(0) }).first
+            guard let child = try db.query(SQL.child, [id], thenText: name, { $0.int64(0) }).first
             else { return nil }
             id = child
         }
@@ -137,10 +153,10 @@ public actor FolderStatsStore {
     private func ensure(_ components: [String]) throws -> Int64 {
         var id = Self.rootID
         for name in components {
-            if let child = try db.query(SQL.child, [id], name: name, { $0.int64(0) }).first {
+            if let child = try db.query(SQL.child, [id], thenText: name, { $0.int64(0) }).first {
                 id = child
             } else {
-                try db.run(SQL.insertName, [id], name: name)
+                try db.run(SQL.insertName, [id], thenText: name)
                 id = db.lastInsertedID
             }
         }
@@ -158,21 +174,6 @@ public actor FolderStatsStore {
             current = row.parent
         }
         return URL(filePath: "/" + names.reversed().joined(separator: "/"), directoryHint: .isDirectory)
-    }
-
-    private static func values(_ stats: FolderStats) -> [Int64?] {
-        [stats.bytes, stats.allocated, stats.files, stats.subfolders,
-         stats.newest.map { Int64($0.timeIntervalSince1970) }, Int64(stats.calculated.timeIntervalSince1970),
-         stats.durationMilliseconds, stats.incomplete ? 1 : 0]
-    }
-
-    private static func stats(from row: Row, at offset: Int32) -> FolderStats {
-        FolderStats(
-            bytes: row.int64(offset), allocated: row.int64(offset + 1), files: row.int64(offset + 2),
-            subfolders: row.int64(offset + 3),
-            newest: row.isNull(offset + 4) ? nil : Date(timeIntervalSince1970: Double(row.int64(offset + 4))),
-            calculated: Date(timeIntervalSince1970: Double(row.int64(offset + 5))),
-            durationMilliseconds: row.int64(offset + 6), incomplete: row.int64(offset + 7) != 0)
     }
 
     func queryPlans() throws -> [String: [String]] {
@@ -230,8 +231,8 @@ final class Database {
         }
     }
 
-    func run(_ sql: String, _ values: [Int64?], name: String? = nil) throws {
-        let statement = try prepared(sql, values, name: name)
+    func run(_ sql: String, _ values: [Int64?], thenText text: String? = nil) throws {
+        let statement = try prepared(sql, values, thenText: text)
         defer { sqlite3_reset(statement) }
         let code = sqlite3_step(statement)
         guard code == SQLITE_DONE || code == SQLITE_ROW else { throw error(code) }
@@ -241,8 +242,10 @@ final class Database {
         try run(sql, [value])
     }
 
-    func query<T>(_ sql: String, _ values: [Int64?] = [], name: String? = nil, _ read: (Row) -> T) throws -> [T] {
-        let statement = try prepared(sql, values, name: name)
+    func query<T>(
+        _ sql: String, _ values: [Int64?] = [], thenText text: String? = nil, _ read: (Row) -> T
+    ) throws -> [T] {
+        let statement = try prepared(sql, values, thenText: text)
         defer { sqlite3_reset(statement) }
         var rows: [T] = []
         while true {
@@ -253,7 +256,7 @@ final class Database {
         }
     }
 
-    private func prepared(_ sql: String, _ values: [Int64?], name: String?) throws -> OpaquePointer {
+    private func prepared(_ sql: String, _ values: [Int64?], thenText text: String?) throws -> OpaquePointer {
         let statement: OpaquePointer
         if let cached = statements[sql] {
             statement = cached
@@ -269,7 +272,7 @@ final class Database {
             let position = Int32(index + 1)
             if let value { sqlite3_bind_int64(statement, position, value) } else { sqlite3_bind_null(statement, position) }
         }
-        if let name { sqlite3_bind_text(statement, Int32(values.count + 1), name, -1, Self.transient) }
+        if let text { sqlite3_bind_text(statement, Int32(values.count + 1), text, -1, Self.transient) }
         return statement
     }
 

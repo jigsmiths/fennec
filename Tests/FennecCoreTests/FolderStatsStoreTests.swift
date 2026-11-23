@@ -40,6 +40,24 @@ import Testing
         #expect(children == ["app": stats(20), "docs": stats(10)])
     }
 
+    @Test func roundTripsEveryStatsField() async throws {
+        let rootStats = FolderStats(
+            bytes: 1, allocated: 2, files: 3, subfolders: 4, newest: Date(timeIntervalSince1970: 5),
+            calculated: Date(timeIntervalSince1970: 6), durationMilliseconds: 7, incomplete: true)
+        let childStats = FolderStats(
+            bytes: 11, allocated: 12, files: 13, subfolders: 14, newest: Date(timeIntervalSince1970: 15),
+            calculated: Date(timeIntervalSince1970: 16), durationMilliseconds: 17, incomplete: true)
+        var walk = FolderWalk()
+        walk.folders.append(.init(parent: -1, name: "", stats: rootStats))
+        walk.folders.append(.init(parent: 0, name: "child", stats: childStats))
+        let store = try FolderStatsStore(url: file)
+
+        try await store.save(walk, at: root)
+
+        #expect(try await store.stats(for: root) == rootStats)
+        #expect(try await store.childStats(of: root) == ["child": childStats])
+    }
+
     @Test func foldersOnlyOnTheWayToARootHaveNoStats() async throws {
         let store = try FolderStatsStore(url: file)
         try await store.save(walk([("", 30)]), at: root)

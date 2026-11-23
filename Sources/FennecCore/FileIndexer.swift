@@ -27,24 +27,25 @@ public enum FileIndexer {
         let rootPath = root.path
         let reader = BulkReader()
         var packageExtensions: [String: Bool] = [:]
-        var queue = [""]
+        let rootFolder = ""
+        var pendingFolders = [rootFolder]
         var next = 0
         var batch: [Item] = []
         var count = 0
 
-        while next < queue.count {
-            let folderPath = queue[next]
+        while next < pendingFolders.count {
+            let folderPath = pendingFolders[next]
             next += 1
             if Task.isCancelled { return }
-            let fullPath = folderPath.isEmpty ? rootPath : rootPath + "/" + folderPath
+            let fullPath = folderPath == rootFolder ? rootPath : rootPath + "/" + folderPath
 
             let outcome = reader.list(fullPath) { entry in
                 let (name, isDirectory) = (entry.name, entry.isDirectory)
                 if entry.isHidden, !includeHidden { return true }
                 if isDirectory, skippedFolders.contains(name) { return true }
-                let isPackage = isDirectory && isPackageName(name, cache: &packageExtensions)
-                let relative = folderPath.isEmpty ? name : folderPath + "/" + name
-                if isDirectory, !isPackage { queue.append(relative) }
+                let isPackage = isDirectory && hasPackageExtension(name, cache: &packageExtensions)
+                let relative = folderPath == rootFolder ? name : folderPath + "/" + name
+                if isDirectory, !isPackage { pendingFolders.append(relative) }
 
                 batch.append(Item(
                     isDirectory: isDirectory, isBrowsable: isDirectory && !isPackage,
@@ -66,11 +67,11 @@ public enum FileIndexer {
         return relativePath.split(separator: "/").allSatisfy { component in
             let name = String(component)
             if name.hasPrefix("."), !includeHidden { return false }
-            return !skippedFolders.contains(name) && !isPackageName(name, cache: &packageExtensions)
+            return !skippedFolders.contains(name) && !hasPackageExtension(name, cache: &packageExtensions)
         }
     }
 
-    static func isPackageName(_ name: String, cache: inout [String: Bool]) -> Bool {
+    static func hasPackageExtension(_ name: String, cache: inout [String: Bool]) -> Bool {
         let ext = (name as NSString).pathExtension.lowercased()
         guard !ext.isEmpty else { return false }
         if let known = cache[ext] { return known }

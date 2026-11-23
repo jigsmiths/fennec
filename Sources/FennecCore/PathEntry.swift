@@ -67,8 +67,8 @@ public enum PathEntry {
         }
         let folderPath = query.folder.standardizedFileURL.path
         return sorted.prefix(limit).map { entry, range in
-            let inFolder = entry.url.deletingLastPathComponent().standardizedFileURL.path == folderPath
-            let completion = inFolder
+            let isInListedFolder = entry.url.deletingLastPathComponent().standardizedFileURL.path == folderPath
+            let completion = isInListedFolder
                 ? query.typedFolder + entry.url.lastPathComponent + "/"
                 : abbreviated(entry.url, home: home) + "/"
             return Suggestion(name: entry.name, url: entry.url, matchRange: range, completion: completion)

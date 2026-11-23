@@ -23,7 +23,7 @@ public enum FuzzyMatcher {
 
         public init(_ text: String) {
             self.text = text
-            terms = text.split(separator: " ").map { $0.utf16.map(fold) }
+            terms = text.split(separator: " ").map { $0.utf16.map(asciiLowercased) }
         }
 
         public var isEmpty: Bool { terms.isEmpty }
@@ -55,10 +55,15 @@ public enum FuzzyMatcher {
 
     /// What a search needs to narrow the next one when the user keeps typing.
     public struct SearchState: Sendable {
+        enum Matched: Sendable {
+            case all
+            case indices([Int])
+        }
+
         let queryText: String
         let skip: Int
-        let matched: [Int]?
-        let scanned: Int
+        let matched: Matched
+        let candidateCount: Int
     }
 
     public struct SearchResult: Sendable {
@@ -109,18 +114,14 @@ public enum FuzzyMatcher {
             let top = inScope.prefix(limit).map { Ranked(index: $0, match: Match(score: 0, positions: [])) }
             return SearchResult(
                 top: top, matchCount: inScope.count,
-                state: SearchState(queryText: query.text, skip: skip, matched: nil, scanned: candidates.count))
+                state: SearchState(queryText: query.text, skip: skip, matched: .all, candidateCount: candidates.count))
         }
 
         let scan: [Int]
-        if let previous, let matched = previous.matched, query.text.hasPrefix(previous.queryText),
-           previous.skip == skip, previous.scanned <= candidates.count {
-            var low = 0, high = inScope.count
-            while low < high {
-                let mid = (low + high) / 2
-                if inScope[mid] < previous.scanned { low = mid + 1 } else { high = mid }
-            }
-            scan = matched + inScope[low...]
+        if let previous, case .indices(let matched) = previous.matched, query.text.hasPrefix(previous.queryText),
+           previous.skip == skip, previous.candidateCount <= candidates.count {
+            let firstAdded = partitioningIndex(inScope.count) { inScope[$0] < previous.candidateCount }
+            scan = matched + inScope[firstAdded...]
         } else {
             scan = inScope
         }
@@ -156,7 +157,18 @@ public enum FuzzyMatcher {
         }
         return SearchResult(
             top: top, matchCount: matched.count,
-            state: SearchState(queryText: query.text, skip: skip, matched: matched, scanned: candidates.count))
+            state: SearchState(
+                queryText: query.text, skip: skip, matched: .indices(matched), candidateCount: candidates.count))
+    }
+
+    /// The first index in `0..<count` where `isBefore` is false, given it holds for a prefix and not after.
+    private static func partitioningIndex(_ count: Int, _ isBefore: (Int) -> Bool) -> Int {
+        var low = 0, high = count
+        while low < high {
+            let mid = (low + high) / 2
+            if isBefore(mid) { low = mid + 1 } else { high = mid }
+        }
+        return low
     }
 
     private struct Scored {
@@ -180,12 +192,8 @@ public enum FuzzyMatcher {
                 guard let worst = top.last, Scored.ranksBefore(scored, worst) else { return }
                 top.removeLast()
             }
-            var low = 0, high = top.count
-            while low < high {
-                let mid = (low + high) / 2
-                if Scored.ranksBefore(top[mid], scored) { low = mid + 1 } else { high = mid }
-            }
-            top.insert(scored, at: low)
+            let position = partitioningIndex(top.count) { Scored.ranksBefore(top[$0], scored) }
+            top.insert(scored, at: position)
         }
     }
 
@@ -194,9 +202,10 @@ public enum FuzzyMatcher {
     ) -> Int? {
         var total = 0
         for term in query.terms {
-            if candidate.nameStart > skip, align(term, candidate.chars, from: candidate.nameStart, into: &scratch) {
+            if candidate.nameStart > skip,
+               fzfV1Align(term, candidate.chars, from: candidate.nameStart, into: &scratch) {
                 total += score(scratch, term.count, candidate.chars) + filenameBonus
-            } else if align(term, candidate.chars, from: skip, into: &scratch) {
+            } else if fzfV1Align(term, candidate.chars, from: skip, into: &scratch) {
                 total += score(scratch, term.count, candidate.chars)
                     + (scratch[0] >= candidate.nameStart ? filenameBonus : 0)
             } else {
@@ -207,11 +216,13 @@ public enum FuzzyMatcher {
         return total
     }
 
-    private static func align(_ term: [UInt16], _ chars: [UInt16], from start: Int, into positions: inout [Int]) -> Bool {
+    private static func fzfV1Align(
+        _ term: [UInt16], _ chars: [UInt16], from start: Int, into positions: inout [Int]
+    ) -> Bool {
         guard !term.isEmpty, start < chars.count else { return false }
         var j = 0
         var end = -1
-        for i in start..<chars.count where fold(chars[i]) == term[j] {
+        for i in start..<chars.count where asciiLowercased(chars[i]) == term[j] {
             j += 1
             if j == term.count {
                 end = i
@@ -222,7 +233,7 @@ public enum FuzzyMatcher {
         j = term.count - 1
         var i = end
         while j >= 0 {
-            if fold(chars[i]) == term[j] {
+            if asciiLowercased(chars[i]) == term[j] {
                 positions[j] = i
                 j -= 1
             }
@@ -264,5 +275,5 @@ public enum FuzzyMatcher {
     private static func isUpper(_ c: UInt16) -> Bool { c >= 65 && c <= 90 }
     private static func isLower(_ c: UInt16) -> Bool { c >= 97 && c <= 122 }
 
-    static func fold(_ c: UInt16) -> UInt16 { isUpper(c) ? c + 32 : c }
+    static func asciiLowercased(_ c: UInt16) -> UInt16 { isUpper(c) ? c + 32 : c }
 }

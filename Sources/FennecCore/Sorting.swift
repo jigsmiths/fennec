@@ -48,15 +48,15 @@ public enum Sorting {
         var i = 0, j = 0
         while i < a.count, j < b.count {
             if isDigit(a[i]), isDigit(b[j]) {
-                let (startA, endA) = digitRun(a, from: i)
-                let (startB, endB) = digitRun(b, from: j)
-                let lengthA = endA - startA, lengthB = endB - startB
+                let runA = digitRun(a, from: i), runB = digitRun(b, from: j)
+                let lengthA = runA.end - runA.significantStart, lengthB = runB.end - runB.significantStart
                 if lengthA != lengthB { return lengthA < lengthB ? .orderedAscending : .orderedDescending }
-                for k in 0..<lengthA where a[startA + k] != b[startB + k] {
-                    return a[startA + k] < b[startB + k] ? .orderedAscending : .orderedDescending
+                for k in 0..<lengthA where a[runA.significantStart + k] != b[runB.significantStart + k] {
+                    return a[runA.significantStart + k] < b[runB.significantStart + k]
+                        ? .orderedAscending : .orderedDescending
                 }
-                i = endA
-                j = endB
+                i = runA.end
+                j = runB.end
             } else {
                 if a[i] != b[j] { return a[i] < b[j] ? .orderedAscending : .orderedDescending }
                 i += 1
@@ -66,12 +66,12 @@ public enum Sorting {
         return ordered(a.count - i, b.count - j)
     }
 
-    private static func digitRun(_ bytes: [UInt8], from index: Int) -> (start: Int, end: Int) {
-        var start = index
-        while start < bytes.count, bytes[start] == UInt8(ascii: "0") { start += 1 }
-        var end = start
+    private static func digitRun(_ bytes: [UInt8], from index: Int) -> (significantStart: Int, end: Int) {
+        var significantStart = index
+        while significantStart < bytes.count, bytes[significantStart] == UInt8(ascii: "0") { significantStart += 1 }
+        var end = significantStart
         while end < bytes.count, isDigit(bytes[end]) { end += 1 }
-        return (start, end)
+        return (significantStart, end)
     }
 
     private static func isDigit(_ byte: UInt8) -> Bool {

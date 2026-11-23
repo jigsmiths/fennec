@@ -168,6 +168,6 @@ import Testing
             return true
         }
 
-        #expect(try #require(dev).isMountPoint)
+        #expect(try #require(dev?.details).isMountPoint)
     }
 }

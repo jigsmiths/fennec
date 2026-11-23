@@ -2,26 +2,20 @@ import CoreServices
 import Foundation
 
 /// Reports, on the main thread, which folders anywhere under a root had their contents change.
-public final class TreeWatcher: @unchecked Sendable {
+public final class TreeWatcher {
     /// Changed folders relative to the root ("" is the root). `everything` is true when FSEvents lost track
     /// and the whole tree must be treated as changed.
     public typealias Handler = @MainActor @Sendable (_ folders: [String], _ everything: Bool) -> Void
 
-    private let rootPath: String
-    private let onChange: Handler
-    private var stream: FSEventStreamRef?
+    private let stream: FSEventStreamRef?
 
     public init(url: URL, onChange: @escaping Handler) {
-        rootPath = Self.realPath(url.path)
-        self.onChange = onChange
-
-        var context = FSEventStreamContext(
-            version: 0, info: Unmanaged.passUnretained(self).toOpaque(),
-            retain: nil, release: nil, copyDescription: nil)
+        let receiver = Receiver(rootPath: Self.realPath(url.path), onChange: onChange)
+        var context = FSEventStreamContext.retaining(receiver)
 
         let callback: FSEventStreamCallback = { _, info, count, paths, flags, _ in
             guard let info else { return }
-            let watcher = Unmanaged<TreeWatcher>.fromOpaque(info).takeUnretainedValue()
+            let watcher = Unmanaged<Receiver>.fromOpaque(info).takeUnretainedValue()
             let eventPaths = unsafeBitCast(paths, to: NSArray.self) as? [String] ?? []
             var folders: [String] = []
             var everything = false
@@ -42,7 +36,7 @@ public final class TreeWatcher: @unchecked Sendable {
 
         let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagWatchRoot)
         stream = FSEventStreamCreate(
-            nil, callback, &context, [rootPath] as CFArray,
+            nil, callback, &context, [receiver.rootPath] as CFArray,
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.5, flags)
         if let stream {
             FSEventStreamSetDispatchQueue(stream, .main)
@@ -55,6 +49,16 @@ public final class TreeWatcher: @unchecked Sendable {
             FSEventStreamStop(stream)
             FSEventStreamInvalidate(stream)
             FSEventStreamRelease(stream)
+        }
+    }
+
+    private final class Receiver: Sendable {
+        let rootPath: String
+        let onChange: Handler
+
+        init(rootPath: String, onChange: @escaping Handler) {
+            self.rootPath = rootPath
+            self.onChange = onChange
         }
     }
 

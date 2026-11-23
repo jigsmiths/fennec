@@ -50,7 +50,8 @@ jobs:
             --jq '"\((.allow_merge_commit // true) or (.allow_rebase_merge // true)) \(.allow_squash_merge // true) \(.squash_merge_commit_title // "COMMIT_OR_PR_TITLE")"')
 
           bump() {
-            if [ "$1" = "$2" ]; then echo "no bump"; else echo "$1 → **$2**"; fi
+            local current=$1 next=$2
+            if [ "$current" = "$next" ]; then echo "no bump"; else echo "$current → **$next**"; fi
           }
 
           prs=${PR:-$(gh pr list --base main --state open --json number --jq '.[].number')}

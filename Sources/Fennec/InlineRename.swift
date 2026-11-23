@@ -1,8 +1,5 @@
 import AppKit
 
-/// Edits a name in place in a list cell or grid tile, like Finder: Return commits, Escape cancels,
-/// clicking elsewhere commits. The name is selected without its extension.
-/// onEnd always runs once: with the new name, or nil when cancelled or unchanged.
 @MainActor
 final class InlineRename: NSObject, NSTextFieldDelegate {
     private static var active: InlineRename?

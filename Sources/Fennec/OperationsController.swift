@@ -1,10 +1,8 @@
 import AppKit
 import FennecCore
 
-/// Runs file operations for one window: the job list, conflict questions, errors and undo.
 @MainActor
 final class OperationsController {
-    /// A running copy or move. Progress and cancelling are touched from the background copy, so they're locked.
     final class Job: @unchecked Sendable, Identifiable {
         let id = UUID()
         let title: String
@@ -22,9 +20,7 @@ final class OperationsController {
         func cancel() { lock.withLock { cancelled = true } }
     }
 
-    /// Called when jobs start or finish, and when one has run long enough to be worth showing.
     var onJobsChanged: (() -> Void)?
-    /// Called with the items a finished operation created, so the folder can select them.
     var onPlaced: (([URL]) -> Void)?
 
     private(set) var visibleJobs: [Job] = []
@@ -34,8 +30,6 @@ final class OperationsController {
     init(window: NSWindow?) {
         self.window = window
     }
-
-    // MARK: Copy and move
 
     func transfer(_ sources: [URL], to destination: URL, mode: TransferMode) {
         guard !sources.isEmpty else { return }
@@ -69,7 +63,6 @@ final class OperationsController {
         return "\(verb) \(what) to “\(destination.lastPathComponent)”"
     }
 
-    // Quick operations finish before anything is shown, so the toolbar doesn't flicker.
     private func showIfSlow(_ job: Job) {
         pending.insert(job.id)
         Task {
@@ -90,9 +83,6 @@ final class OperationsController {
         }
     }
 
-    // MARK: Conflicts
-
-    /// Remembers "Apply to all" answers for one job, separately for files and folders.
     @MainActor
     private final class ConflictMemory {
         var forFiles: ConflictChoice?
@@ -133,8 +123,6 @@ final class OperationsController {
         }
         return choice
     }
-
-    // MARK: Trash, delete, rename, new folder
 
     func trash(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
@@ -216,7 +204,6 @@ final class OperationsController {
         }
     }
 
-    /// Returns the renamed item's new location, or nil if nothing changed or it failed.
     func rename(_ url: URL, to name: String) async -> URL? {
         let runner = runner
         do {
@@ -241,8 +228,6 @@ final class OperationsController {
             return nil
         }
     }
-
-    // MARK: Undo and errors
 
     private func registerUndo(_ steps: [UndoStep], name: String) {
         guard !steps.isEmpty, let undoManager = window?.undoManager else { return }

@@ -4,7 +4,6 @@ import UniformTypeIdentifiers
 
 /// Lists everything under a folder for the fuzzy finder.
 public enum FileIndexer {
-    /// No URL is stored: an NSURL costs about 500 bytes, and the finder only needs one for the item it opens.
     public struct Item: Sendable {
         public let isDirectory: Bool
         public let isBrowsable: Bool
@@ -18,7 +17,6 @@ public enum FileIndexer {
         }
     }
 
-    /// Big, rarely wanted trees that would crowd out real results.
     private static let skippedFolders: Set<String> = [".git", "node_modules"]
 
     /// Walks `root` breadth-first, so nearby items come first and one deep tree can't use up the whole `limit`.
@@ -29,7 +27,6 @@ public enum FileIndexer {
         let rootPath = root.path
         let reader = BulkReader()
         var packageExtensions: [String: Bool] = [:]
-        // Folders still to list, relative to root; "" is the root itself.
         var queue = [""]
         var next = 0
         var batch: [Item] = []
@@ -64,7 +61,6 @@ public enum FileIndexer {
         if !batch.isEmpty { onBatch(batch) }
     }
 
-    /// Packages (.app, .bundle, .xcodeproj…) are recognized by extension, as Launch Services does for nearly all.
     static func isPackageName(_ name: String, cache: inout [String: Bool]) -> Bool {
         let ext = (name as NSString).pathExtension.lowercased()
         guard !ext.isEmpty else { return false }

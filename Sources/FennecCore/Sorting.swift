@@ -44,7 +44,6 @@ public enum Sorting {
         return indices.map { entries[$0] }
     }
 
-    /// Byte-wise compare where digit runs compare by numeric value ("file2" < "file10").
     static func naturalCompare(_ a: [UInt8], _ b: [UInt8]) -> ComparisonResult {
         var i = 0, j = 0
         while i < a.count, j < b.count {
@@ -67,7 +66,6 @@ public enum Sorting {
         return ordered(a.count - i, b.count - j)
     }
 
-    /// Returns the run's significant digits (leading zeros skipped) and where the run ends.
     private static func digitRun(_ bytes: [UInt8], from index: Int) -> (start: Int, end: Int) {
         var start = index
         while start < bytes.count, bytes[start] == UInt8(ascii: "0") { start += 1 }
@@ -80,7 +78,6 @@ public enum Sorting {
         byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "9")
     }
 
-    /// Ranks each entry by the Kind label the column shows, computing each distinct type's label once.
     private static func kindLabelRanks(_ entries: [FileEntry]) -> [Int] {
         var labelsByType: [String: String] = [:]
         let labels = entries.map { entry in

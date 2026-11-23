@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import FennecCore
 
-/// A runner whose "Trash" is a temp folder, so tests never touch the real Trash.
 private func makeRunner(_ root: TempDir) throws -> FileOperationRunner {
     let trash = root.url.appendingPathComponent(".test-trash", isDirectory: true)
     try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
@@ -155,7 +154,6 @@ struct TransferTests {
         #expect(seen.value == 2)
         #expect(try read(root.url.appendingPathComponent("dest/F/a.txt")) == "dest a")
         #expect(try read(root.url.appendingPathComponent("dest/F/b.txt")) == "src b")
-        // The skipped a.txt stays behind, so the source folder is kept.
         #expect(exists(root.url.appendingPathComponent("src/F/a.txt")))
     }
 

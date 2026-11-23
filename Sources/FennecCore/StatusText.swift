@@ -1,8 +1,6 @@
 import Foundation
 
-/// The status bar's text.
 public enum StatusText {
-    /// The left side: how many items the folder shows, or what's selected.
     public static func contents(itemCount: Int, selection: [FileEntry]) -> String {
         selection.isEmpty ? "\(itemCount.formatted()) item\(itemCount == 1 ? "" : "s")" : SelectionSummary.describe(selection)
     }

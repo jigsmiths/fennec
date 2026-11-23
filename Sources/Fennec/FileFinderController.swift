@@ -2,11 +2,8 @@ import AppKit
 import FennecCore
 import UniformTypeIdentifiers
 
-/// A floating search box over the window that fuzzy-finds everything under a folder, like fzf.
-/// Return shows the pick in its folder; Cmd+Return opens it.
 @MainActor
 final class FileFinderController: NSObject {
-    /// The user picked an item; `open` is true for Cmd+Return.
     var onChoose: ((_ url: URL, _ isBrowsable: Bool, _ open: Bool) -> Void)?
 
     private static let resultLimit = 200
@@ -14,9 +11,7 @@ final class FileFinderController: NSObject {
 
     private let index: FinderIndex
     private var root: URL { index.root }
-    /// The searched folder relative to the index root; "" is the root itself.
     private let folder: String
-    /// UTF-16 length of `folder` plus its slash, hidden from every shown path.
     private let skip: Int
     private var listener: UUID?
     private var scopeCount = 0
@@ -25,16 +20,13 @@ final class FileFinderController: NSObject {
     private let table = NSTableView()
     private let status = NSTextField(labelWithString: "")
 
-    /// The shown rows. Items are copied out so a refresh replacing the index can't shift them.
     private var results: [(item: FileIndexer.Item, match: FuzzyMatcher.Match)] = []
     private var matchCount = 0
-    /// The last search, to narrow the next one while the user keeps typing.
     private var searchState: FuzzyMatcher.SearchState?
     private var searchStateVersion = -1
     private var searchGeneration = 0
     private var lastSearch = ContinuousClock.now
     private var isClosed = false
-    /// Arrow keys moved the selection since the query last changed.
     private var userMovedSelection = false
     private var iconsByExtension: [String: NSImage] = [:]
     private let folderIcon = NSWorkspace.shared.icon(for: .folder)
@@ -74,10 +66,7 @@ final class FileFinderController: NSObject {
         table.reloadData()
     }
 
-    // MARK: Searching
-
     private func indexUpdated() {
-        // Re-rank as a first walk streams in, but not for every batch on a big tree.
         if !index.isWalking || ContinuousClock.now - lastSearch > .milliseconds(150) { search() }
     }
 
@@ -106,7 +95,6 @@ final class FileFinderController: NSObject {
     }
 
     private func show(_ rows: [(item: FileIndexer.Item, match: FuzzyMatcher.Match)]) {
-        // Batches arriving mid-search shouldn't yank the selection away from the row the user moved to.
         let selectedPath = userMovedSelection ? selectedItem?.relativePath : nil
         results = rows
         table.reloadData()
@@ -132,8 +120,6 @@ final class FileFinderController: NSObject {
         if !index.isWalking, index.reachedLimit { status.stringValue += " (stopped at the limit)" }
     }
 
-    // MARK: Choosing
-
     private var selectedItem: FileIndexer.Item? {
         let row = table.selectedRow
         guard row >= 0, row < results.count else { return nil }
@@ -157,8 +143,6 @@ final class FileFinderController: NSObject {
         table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         table.scrollRowToVisible(row)
     }
-
-    // MARK: Layout
 
     private func buildPanel() {
         panel.delegate = self
@@ -245,7 +229,6 @@ final class FileFinderController: NSObject {
 
     private func icon(for item: FileIndexer.Item) -> NSImage {
         if item.isBrowsable { return folderIcon }
-        // Packages (apps, bundles) have their own icons; plain files share one per extension.
         if item.isDirectory { return NSWorkspace.shared.icon(forFile: item.url(in: root).path) }
         let ext = (item.relativePath as NSString).pathExtension.lowercased()
         if let cached = iconsByExtension[ext] { return cached }
@@ -284,26 +267,22 @@ extension FileFinderController: NSTableViewDataSource, NSTableViewDelegate {
         let id = NSUserInterfaceItemIdentifier("FinderCell")
         let cell = tableView.makeView(withIdentifier: id, owner: nil) as? FinderCell ?? FinderCell(identifier: id)
         let (item, match) = results[row]
-        // Shown relative to the searched folder, which may be below the index root.
         let path = (item.relativePath as NSString).substring(from: skip)
         cell.show(path: path, positions: match.positions.map { $0 - skip }, icon: icon(for: item))
         return cell
     }
 
-    // The field keeps focus, so draw the selection as if the table had it.
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         EmphasizedRowView()
     }
 }
 
 extension FileFinderController: NSWindowDelegate {
-    // Clicking back into the window dismisses the finder, like Spotlight.
     func windowDidResignKey(_ notification: Notification) {
         close()
     }
 }
 
-/// A borderless panel that can take key focus and reports Escape and Cmd+Return.
 final class FinderPanel: NSPanel {
     var onCancel: (() -> Void)?
     var onCommandReturn: (() -> Void)?
@@ -341,7 +320,6 @@ final class EmphasizedRowView: NSTableRowView {
     }
 }
 
-/// One result: icon, the name with matched letters in bold, and the folder it's in.
 private final class FinderCell: NSTableCellView {
     private let icon = NSImageView()
     private let name = NSTextField(labelWithString: "")

@@ -1,11 +1,11 @@
 name: Release
 
 on:
-  workflow_run: # after CI passed on main
+  workflow_run:
     workflows: ["CI"]
     types: [completed]
     branches: ["main"]
-  workflow_dispatch: # publish the latest tag again, after a failed release
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -127,7 +127,6 @@ jobs:
 
             app "Fennec.app"
 
-            # Ad-hoc signed only, so skip the Gatekeeper prompt.
             postflight_steps do
               run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/Fennec.app"]
             end

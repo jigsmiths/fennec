@@ -1,7 +1,5 @@
 import AppKit
 
-/// Set FENNEC_BENCH=1 to load the start folder twice, print the warm load's timings to stderr and quit.
-/// The first load is skipped because it includes one-time app launch work.
 @MainActor
 enum Bench {
     static let enabled = ProcessInfo.processInfo.environment["FENNEC_BENCH"] != nil

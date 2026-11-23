@@ -89,7 +89,6 @@ import Testing
 
     @Test func listsLargeFoldersCompletely() throws {
         let dir = try TempDir()
-        // More entries than one bulk-read buffer holds.
         for i in 0..<3000 { try dir.file("a-fairly-long-file-name-to-fill-the-buffer-\(i).txt") }
 
         #expect(paths(dir.url, limit: 10_000).count == 3000)

@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: ["main"]
     types: [opened, synchronize, reopened, edited] # edited: the PR title drives squash merges
-  workflow_run: # main moved and may have a new tag, so refresh every open PR
+  workflow_run:
     workflows: ["Release"]
     types: [completed]
     branches: ["main"]
@@ -49,7 +49,7 @@ jobs:
           read -r allow_merge allow_squash squash_title < <(gh api "repos/$GITHUB_REPOSITORY" \
             --jq '"\((.allow_merge_commit // true) or (.allow_rebase_merge // true)) \(.allow_squash_merge // true) \(.squash_merge_commit_title // "COMMIT_OR_PR_TITLE")"')
 
-          bump() { # current next
+          bump() {
             if [ "$1" = "$2" ]; then echo "no bump"; else echo "$1 → **$2**"; fi
           }
 
@@ -60,7 +60,6 @@ jobs:
             git checkout -q --detach origin/main
             current=$(svu current)
 
-            # Merge commit (or rebase): every commit in the PR counts.
             merge_line=""
             if [ "$allow_merge" = true ]; then
               if git merge -q --no-ff --no-edit "$head" > /dev/null 2>&1; then

@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import FennecCore
 
-/// A stand-in for ~/Library/Mobile Documents with the iCloud Drive container, one visible app library and one hidden one.
 private func makeMobileDocuments() throws -> TempDir {
     let dir = try TempDir()
     try dir.folder("com~apple~CloudDocs/Notes")

@@ -1,6 +1,5 @@
 import Foundation
 
-/// Lets the main thread stop a folder walk running on another queue.
 final class CancelFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var cancelled = false

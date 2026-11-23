@@ -2,7 +2,6 @@ import AppKit
 import FennecCore
 import Quartz
 
-/// The preview pane: a Quick Look preview of the selected file plus its details.
 @MainActor
 final class PreviewViewController: NSViewController {
     private let preview: QLPreviewView = QLPreviewView(frame: .zero, style: .normal)
@@ -45,8 +44,6 @@ final class PreviewViewController: NSViewController {
         render([], includeHidden: false)
     }
 
-    /// Waits briefly so arrowing through a folder doesn't load a preview for every row passed.
-    /// Skips the reload when a folder refresh reports the same, unchanged selection.
     func show(_ entries: [FileEntry], includeHidden: Bool) {
         let key = entries.map { "\($0.path)|\($0.modified?.timeIntervalSince1970 ?? 0)" }.joined(separator: "\n")
             + "|\(includeHidden)"

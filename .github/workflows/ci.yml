@@ -19,6 +19,5 @@ jobs:
       - name: Build app bundle
         run: just bundle
 
-      # `just test` loads the plugin from the Command Line Tools, which the runner's Xcode doesn't need.
       - name: Test
         run: swift test

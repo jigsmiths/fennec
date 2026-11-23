@@ -1,15 +1,12 @@
 import AppKit
 import FennecCore
 
-/// One pane: a header with back, forward and the path, above a folder view. Each pane has its own history.
 @MainActor
 final class PaneController: NSViewController {
     let folder: FolderViewController
     private(set) var history: NavigationHistory
 
-    /// The pane was clicked, focused or navigated from its header, so it should become the active pane.
     var onActivate: (() -> Void)?
-    /// The pane now shows a different folder.
     var onNavigate: (() -> Void)?
 
     var isActive = false {
@@ -80,7 +77,6 @@ final class PaneController: NSViewController {
         container.addSubview(folder.view)
 
         NSLayoutConstraint.activate([
-            // Below the toolbar, which the window's full-size content view would otherwise put on top of it.
             header.topAnchor.constraint(equalTo: container.safeAreaLayoutGuide.topAnchor),
             header.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: container.trailingAnchor),
@@ -101,14 +97,11 @@ final class PaneController: NSViewController {
         updateHeader()
     }
 
-    // MARK: Navigation
-
     func navigate(to url: URL, selecting selection: URL? = nil) {
         history.visit(url)
         show(history.current, selecting: selection)
     }
 
-    /// Loads the starting folder; called once the pane is on screen.
     func showCurrent() {
         show(history.current, selecting: nil)
     }
@@ -143,12 +136,10 @@ final class PaneController: NSViewController {
     }
 }
 
-/// The pane header's background: a light accent tint while its pane is active.
 final class PaneHeaderView: NSView {
     var isActive = false {
         didSet { needsDisplay = true }
     }
-    /// A click on the header itself: empty space or a separator label. Its buttons handle their own clicks.
     var onClick: (() -> Void)?
 
     override func mouseDown(with event: NSEvent) {

@@ -16,7 +16,6 @@ import Testing
         FolderStats(bytes: bytes, allocated: bytes, files: 1, calculated: date ?? now)
     }
 
-    /// A walk of `root` from (relative path, bytes) pairs, parents listed before children.
     private func walk(_ folders: [(String, Int64)], at date: Date? = nil) -> FolderWalk {
         var walk = FolderWalk()
         var indexes: [String: Int] = [:]
@@ -136,7 +135,6 @@ import Testing
         }
     }
 
-    /// FENNEC_PERF=1 swift test --filter FolderStatsStoreTests prints timings for a million folders.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["FENNEC_PERF"] != nil))
     func performanceWithAMillionFolders() async throws {
         let store = try FolderStatsStore(url: file)

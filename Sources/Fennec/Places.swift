@@ -46,7 +46,6 @@ enum Places {
         }
     }
 
-    /// Pinned folders that exist right now. Missing ones stay pinned so they return when a drive reconnects.
     @MainActor static var favorites: [Place] {
         PinnedFolders.favorites.paths.filter(isFolder).map { path in
             let url = URL(filePath: path, directoryHint: .isDirectory)
@@ -65,7 +64,6 @@ enum Places {
     }
 }
 
-/// The app-wide pinned folders. Every change is saved and tells each window's sidebar to reload.
 @MainActor
 enum PinnedFolders {
     static let didChange = Notification.Name("PinnedFoldersDidChange")

@@ -58,7 +58,6 @@ public final class TreeWatcher: @unchecked Sendable {
         }
     }
 
-    /// The event's folder relative to `root`, or nil when it's outside it. Both are real (resolved) paths.
     static func relativeFolder(_ eventPath: String, under root: String) -> String? {
         let path = trimmed(eventPath)
         let base = trimmed(root)

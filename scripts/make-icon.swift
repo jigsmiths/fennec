@@ -1,4 +1,3 @@
-// Renders an SVG into the PNG sizes an .iconset needs. Usage: swift make-icon.swift <in.svg> <out.iconset>
 import AppKit
 
 let args = CommandLine.arguments

@@ -4,13 +4,9 @@ import FennecCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windows: [MainWindowController] = []
-    /// Built at launch and shared by every window, so Find is instant anywhere under home.
     private let homeIndex: FinderIndex? = Bench.enabled ? nil : FinderIndex(root: Places.home, includeHidden: false)
-    /// Off when launched on a folder from the command line (bench, test runs), so those never replace
-    /// the real session.
     private var savesSession = true
     private var saveTask: Task<Void, Never>?
-    /// FENNEC_SESSION_FILE lets test runs use a scratch session instead of the real one.
     private let sessionURL = ProcessInfo.processInfo.environment["FENNEC_SESSION_FILE"]
         .map { URL(filePath: $0) } ?? SessionStore.defaultURL
 
@@ -25,7 +21,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if windows.isEmpty { openWindow(WindowDefaults.window(at: Places.home)) }
         }
         NSApp.activate()
-        // Low priority, after the windows, so it never slows startup.
         homeIndex?.refreshIfNeeded(priority: .utility)
         Task.detached(priority: .utility) { TrashLedger.shared.prune() }
     }
@@ -34,7 +29,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
-    // Save before quitting closes the windows: each close removes its window, which would leave an empty session.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         saveSession()
         savesSession = false
@@ -73,9 +67,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scheduleSave()
     }
 
-    // MARK: Session
-
-    /// Saves shortly after a burst of changes rather than on every one.
     private func scheduleSave() {
         guard savesSession else { return }
         saveTask?.cancel()

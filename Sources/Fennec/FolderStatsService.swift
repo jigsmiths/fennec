@@ -1,22 +1,15 @@
 import Foundation
 import FennecCore
 
-/// Works out folder stats in the background, one walk at a time, and keeps them in the shared cache.
-/// The latest requests go first, so the folder being looked at isn't stuck behind ones already left: a walk
-/// that has run for a while makes way for them and starts over afterwards.
 @MainActor
 final class FolderStatsService {
     static let shared = FolderStatsService()
-    /// Posted after a walk is saved, with the walked folder's URL as the object.
     static let didUpdate = Notification.Name("FolderStatsService.didUpdate")
-    /// Posted when a walk starts, stops or makes progress, or the queue changes.
     static let activityDidChange = Notification.Name("FolderStatsService.activityDidChange")
 
-    /// The walk in progress.
     struct Scan {
         let url: URL
         let started: ContinuousClock.Instant
-        /// The file count from the last walk of this folder, if there was one.
         let expectedFiles: Int64?
         var progress = FolderWalker.Progress(files: 0, bytes: 0, folder: "")
 
@@ -31,7 +24,6 @@ final class FolderStatsService {
 
     private static let walkQueue = DispatchQueue(label: "dev.bvdwalt.fennec.folder-stats", qos: .utility)
     private static let preemptAfter = Duration.seconds(1)
-    /// Nil when the cache can't be opened, which turns folder stats off rather than failing loads.
     private let store: FolderStatsStore?
     private var queue: [Request] = []
     private var isWorking = false
@@ -49,17 +41,14 @@ final class FolderStatsService {
         (try? await store?.childStats(of: folder)) ?? [:]
     }
 
-    /// Queues folders to be walked if they still have no stats by the time their turn comes.
     func request(_ folders: [URL]) {
         enqueue(folders, force: false)
     }
 
-    /// Walks folders again even if they have stats, and even on network volumes.
     func recalculate(_ folders: [URL]) {
         enqueue(folders, force: true)
     }
 
-    /// Stops the folder's walk if it's running, or takes it out of the queue.
     func cancel(_ folder: URL) {
         let path = folder.standardizedFileURL.path
         if currentRequest?.path == path { currentFlag?.set() }
@@ -99,7 +88,6 @@ final class FolderStatsService {
 
     private func process(_ request: Request, _ store: FolderStatsStore) async {
         let cached = try? await store.stats(for: request.url)
-        // A walk of a folder above this one may have covered it while it waited.
         if !request.force, cached != nil { return }
 
         let flag = CancelFlag()
@@ -137,7 +125,6 @@ final class FolderStatsService {
         NotificationCenter.default.post(name: Self.activityDidChange, object: self)
     }
 
-    /// Network volumes are only walked when asked for, since a big share could take hours.
     nonisolated private static func walk(
         _ url: URL, force: Bool, isCancelled: () -> Bool, progress: @escaping @Sendable (FolderWalker.Progress) -> Void
     ) -> FolderWalk? {

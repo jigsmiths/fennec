@@ -1,13 +1,10 @@
 import Darwin
 
-/// Reads a folder's entries with getattrlistbulk: everything asked for comes back in a few system calls per
-/// folder, instead of an NSURL and a property lookup per entry.
 final class BulkReader {
     struct Entry {
         let name: String
         let isDirectory: Bool
         let isHidden: Bool
-        // Only filled in when the reader was made with `details`.
         var modified: Int64 = 0
         var isMountPoint = false
         var size: Int64 = 0
@@ -35,7 +32,6 @@ final class BulkReader {
 
     deinit { buffer.deallocate() }
 
-    /// Calls `entry` for each entry until it returns false. Symlinks count as files, so they're never followed.
     func list(_ path: String, entry: (Entry) -> Bool) -> Outcome {
         let fd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
         guard fd >= 0 else { return .failed }

@@ -18,15 +18,12 @@ public enum FinderTrash {
         }
     }
 
-    // Converting a path to HFS text follows a symlink, so only the parent folder is converted and the
-    // item is named inside it. Following links in the parent is harmless: it reaches the same item.
     static let locateHandler = """
         on locate(folderPath, itemName)
             return {(POSIX file folderPath) as text, itemName}
         end locate
         """
 
-    // Paths arrive as arguments rather than in the script text, so no name can break the script.
     private static let script = locateHandler + """
 
         on run argv

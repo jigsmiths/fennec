@@ -2,7 +2,6 @@ import AppKit
 import FennecCore
 import UniformTypeIdentifiers
 
-/// Icons, kinds and formatted values, cached per file type so scrolling never hits Launch Services twice.
 @MainActor
 enum FileDisplay {
     private static var iconsByType: [String: NSImage] = [:]

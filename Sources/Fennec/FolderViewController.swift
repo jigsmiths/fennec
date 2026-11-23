@@ -1,30 +1,24 @@
 import AppKit
 import FennecCore
 
-/// A view that shows a folder's rows. The list and the grid both implement it.
 @MainActor
 protocol FolderContentView: NSViewController {
     var onOpen: (() -> Void)? { get set }
-    /// Return was pressed: rename the selection, like Finder.
     var onRename: (() -> Void)? { get set }
     var onSelectionChange: (() -> Void)? { get set }
     var onQuickLook: (() -> Void)? { get set }
     var onFocus: (() -> Void)? { get set }
     var onSwitchPane: (() -> Void)? { get set }
     var dropHandler: FolderDropHandler? { get set }
-    /// A right-click, after the view has taken focus and selected what was clicked.
     var onContextMenu: (() -> NSMenu?)? { get set }
     var selectedIndexes: IndexSet { get }
-    /// Where an item is, in this view's coordinates, for anchoring popovers such as the share picker.
     func frame(ofItemAt index: Int) -> NSRect?
     func display(_ rows: [FileEntry], selecting: IndexSet, keepScroll: Bool)
     func focus()
-    /// Key events forwarded from the Quick Look panel, so arrow keys keep moving the selection.
     func handleKey(_ event: NSEvent)
     func beginRename(at index: Int, onEnd: @escaping (String?) -> Void)
 }
 
-/// Decides what a drop onto the folder (nil) or onto one of its subfolders does.
 @MainActor
 protocol FolderDropHandler: AnyObject {
     func validateDrop(_ info: NSDraggingInfo, onto folder: FileEntry?) -> NSDragOperation
@@ -32,7 +26,6 @@ protocol FolderDropHandler: AnyObject {
 }
 
 extension NSScrollView {
-    /// Runs `update`, then puts the scroll position back where it was.
     func keepingScrollPosition(_ update: () -> Void) {
         let origin = contentView.bounds.origin
         update()
@@ -41,7 +34,6 @@ extension NSScrollView {
     }
 }
 
-/// Loads, watches, sorts and filters one folder, and shows it in the current view mode.
 @MainActor
 final class FolderViewController: NSViewController {
     var onOpenFolder: ((URL) -> Void)?
@@ -49,14 +41,10 @@ final class FolderViewController: NSViewController {
     var onQuickLook: (() -> Void)?
     var onRename: ((URL, String) -> Void)?
     var onTransfer: (([URL], URL, TransferMode) -> Void)?
-    /// The list or grid got keyboard focus, e.g. from a click.
     var onFocus: (() -> Void)?
-    /// Tab was pressed.
     var onSwitchPane: (() -> Void)?
-    /// The view mode or sort order changed.
     var onSettingsChange: (() -> Void)?
 
-    /// The folder being shown.
     var currentDirectory: URL? { directory }
 
     var showHidden = false {
@@ -91,7 +79,6 @@ final class FolderViewController: NSViewController {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    /// Rows shown, after hiding hidden files.
     var itemCount: Int { rows.count }
 
     var selectedEntries: [FileEntry] {
@@ -114,8 +101,6 @@ final class FolderViewController: NSViewController {
         view = container
         attach(content)
     }
-
-    // MARK: View mode
 
     func setViewMode(_ mode: ViewMode) {
         guard mode != viewMode else { return }
@@ -185,15 +170,11 @@ final class FolderViewController: NSViewController {
         content.focus()
     }
 
-    /// The view and rect to show the share picker from: the first selected item, or the whole folder view.
     func shareAnchor() -> (NSView, NSRect) {
         let rect = content.selectedIndexes.first.flatMap(content.frame(ofItemAt:))
         return (content.view, rect ?? content.view.bounds)
     }
 
-    // MARK: Loading
-
-    /// Shows a folder. An inactive pane passes takeFocus false so it doesn't pull focus from the active one.
     func show(_ url: URL, selecting selection: URL?, takeFocus: Bool = true) {
         loadViewIfNeeded()
         directory = url
@@ -210,7 +191,6 @@ final class FolderViewController: NSViewController {
         load(directory, selecting: selectedPaths, keepScroll: true)
     }
 
-    /// Reloads now and selects the given items, e.g. after a paste or rename. Optionally starts renaming the first.
     func reload(selecting urls: [URL], thenRename: Bool = false) {
         guard let directory else { return }
         if thenRename { pendingRenamePath = urls.first?.standardizedFileURL.path }
@@ -273,9 +253,6 @@ final class FolderViewController: NSViewController {
         }
     }
 
-    /// A folder can take a while (a macOS permission prompt, a slow share). Rather than keep showing the
-    /// previous folder's files under the new path, clear the view if loading takes longer than a blink.
-    /// Loads are numbered so a later refresh of the same folder can't be mistaken for this load still running.
     private func showLoadingIfSlow(_ generation: Int) {
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(150))
@@ -305,7 +282,6 @@ final class FolderViewController: NSViewController {
 
         if let path = pendingRenamePath, rows.contains(where: { $0.path == path }) {
             pendingRenamePath = nil
-            // Wait for the new row to be on screen before editing it.
             DispatchQueue.main.async { [weak self] in self?.renameSelection() }
         }
     }
@@ -315,9 +291,6 @@ final class FolderViewController: NSViewController {
         messageLabel.isHidden = false
     }
 
-    // MARK: Folder stats
-
-    /// The Trash lists items from several folders, so stats keyed by this folder wouldn't match them.
     private static func hasFolderStats(_ url: URL) -> Bool {
         !FinderTrash.isTrash(url) && !Bench.enabled
     }
@@ -327,7 +300,6 @@ final class FolderViewController: NSViewController {
         FolderStatsService.shared.request(rows.filter { $0.isDirectory && $0.folderStats == nil }.map(\.url))
     }
 
-    /// A walk of this folder, a folder above it or one of its subfolders changes what the rows show.
     @objc private func folderStatsDidUpdate(_ notification: Notification) {
         guard let walked = (notification.object as? URL)?.standardizedFileURL.path,
               let shown = directory?.standardizedFileURL.path else { return }
@@ -335,7 +307,6 @@ final class FolderViewController: NSViewController {
         let isChild = (walked as NSString).deletingLastPathComponent == shown
         guard isAbove || isChild, !statsRefreshScheduled else { return }
 
-        // Subfolders often finish in quick succession, so pick up several walks at once.
         statsRefreshScheduled = true
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(300))
@@ -352,8 +323,6 @@ final class FolderViewController: NSViewController {
             self.rearrange()
         }
     }
-
-    // MARK: Selection and opening
 
     private var selectedPaths: [String] {
         selectedEntries.map(\.path)
@@ -391,7 +360,6 @@ final class FolderViewController: NSViewController {
         }
     }
 
-    // A refresh replaces the row's cell and would end the rename, e.g. the change notice for a new folder.
     private func folderChanged() {
         if openRenames > 0 {
             reloadAfterRename = true
@@ -413,7 +381,6 @@ extension FolderViewController: FolderDropHandler {
         return true
     }
 
-    /// What a drop would do, or nil when it would do nothing or isn't allowed.
     private func drop(_ info: NSDraggingInfo, onto folder: FileEntry?) -> ([URL], URL, TransferMode)? {
         guard let target = folder?.url ?? directory else { return nil }
         let urls = FileClipboard.fileURLs(from: info.draggingPasteboard)

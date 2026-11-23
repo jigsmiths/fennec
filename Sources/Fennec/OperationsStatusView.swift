@@ -1,7 +1,6 @@
 import AppKit
 import FennecCore
 
-/// The toolbar progress ring for running operations; clicking it lists each job with a cancel button.
 @MainActor
 final class OperationsStatusView: NSView {
     private let ring = NSProgressIndicator()
@@ -61,7 +60,6 @@ final class OperationsStatusView: NSView {
             timer = nil
             popover.close()
         } else if timer == nil {
-            // Progress arrives from the copy thread far more often than it's worth drawing.
             timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.refresh() }
             }

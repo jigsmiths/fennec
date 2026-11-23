@@ -16,7 +16,6 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
         }
     }
 
-    /// A favorite being dragged to a new spot, so drags within the sidebar never carry file URLs.
     private static let favoriteType = NSPasteboard.PasteboardType("dev.fennec.favorite")
 
     var onNavigate: ((URL) -> Void)?
@@ -83,8 +82,6 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
         if let highlighted { highlight(highlighted) }
     }
 
-    // MARK: Table
-
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
@@ -116,8 +113,6 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
         onNavigate?(place.url)
     }
 
-    // MARK: Context menu
-
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let row = tableView.clickedRow
@@ -133,9 +128,6 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
         PinnedFolders.update { $0.remove(url.path) }
     }
 
-    // MARK: Drag and drop
-
-    /// The Favorites rows, as the gap indexes a drop can land in: before the first through after the last.
     private var favoriteGaps: ClosedRange<Int> {
         let first = favorites.isEmpty ? 0 : 1
         return first...(first + favorites.count)
@@ -161,7 +153,6 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
         } else {
             return []
         }
-        // Wherever it's dropped, a folder lands in the Favorites section.
         let gaps = favoriteGaps
         tableView.setDropRow(min(max(row, gaps.lowerBound), gaps.upperBound), dropOperation: .above)
         return operation
@@ -187,7 +178,6 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
         info.draggingPasteboard.string(forType: Self.favoriteType)
     }
 
-    /// The dragged folders, or none when anything dragged is a file or a package like an app.
     private func draggedFolders(_ info: NSDraggingInfo) -> [URL] {
         let urls = info.draggingPasteboard.readObjects(
             forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
@@ -196,8 +186,6 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
         }
         return allFolders ? urls : []
     }
-
-    // MARK: Cells
 
     private func reuse(_ id: String, in tableView: NSTableView, withImage: Bool) -> NSTableCellView {
         let identifier = NSUserInterfaceItemIdentifier(id)

@@ -1,11 +1,8 @@
 import AppKit
 import FennecCore
 
-/// The right-click menu for the file list and grid. Items send the same actions as the main menu, so the
-/// window controller runs and validates them for the active pane's selection.
 @MainActor
 enum FolderContextMenu {
-    /// A menu for the selected items, or for the folder itself when nothing is selected.
     static func make(for entries: [FileEntry]) -> NSMenu {
         let menu = NSMenu()
         if entries.isEmpty {
@@ -56,7 +53,6 @@ enum FolderContextMenu {
         return menu
     }
 
-    /// The menu inside the Trash, where items can only be restored, moved out or deleted.
     static func makeForTrash(_ entries: [FileEntry]) -> NSMenu {
         let menu = NSMenu()
         if entries.isEmpty {
@@ -79,16 +75,13 @@ enum FolderContextMenu {
         return menu
     }
 
-    /// The system Share menu: AirDrop, Messages, Mail and any share extensions.
     private static func shareItem(for entries: [FileEntry]) -> NSMenuItem {
         let picker = NSSharingServicePicker(items: entries.map { $0.url as NSURL })
         let item = picker.standardShareMenuItem
-        // Keep the picker alive for as long as the menu is.
         item.representedObject = picker
         return item
     }
 
-    /// Apps that can open the first file, default app first. Nil for folders or when no app claims the file.
     private static func openWithItem(for entries: [FileEntry]) -> NSMenuItem? {
         guard let first = entries.first, entries.allSatisfy({ !$0.isBrowsable }) else { return nil }
         let workspace = NSWorkspace.shared

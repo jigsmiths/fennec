@@ -6,7 +6,6 @@ public enum FuzzyMatcher {
     public struct Candidate: Sendable {
         public let text: String
         let chars: [UInt16]
-        /// Where the last path component starts.
         let nameStart: Int
 
         public init(_ text: String) {
@@ -57,9 +56,7 @@ public enum FuzzyMatcher {
     public struct SearchState: Sendable {
         let queryText: String
         let skip: Int
-        /// Indexes of every match, ascending; nil means every candidate.
         let matched: [Int]?
-        /// How many candidates existed; later ones were never looked at.
         let scanned: Int
     }
 
@@ -81,7 +78,6 @@ public enum FuzzyMatcher {
     private static let gapExtensionPenalty = 1
     private static let filenameBonus = 20
 
-    /// Below this, splitting the work across cores costs more than it saves.
     private static let chunkSize = 16_384
 
     /// Matches from UTF-16 offset `skip` on; positions are still offsets into the whole text.
@@ -118,7 +114,6 @@ public enum FuzzyMatcher {
         let scan: [Int]
         if let previous, let matched = previous.matched, query.text.hasPrefix(previous.queryText),
            previous.skip == skip, previous.scanned <= candidates.count {
-            // Scope indices are ascending, so the ones added since are a suffix.
             var low = 0, high = inScope.count
             while low < high {
                 let mid = (low + high) / 2
@@ -133,7 +128,6 @@ public enum FuzzyMatcher {
         var chunks = [Chunk](repeating: Chunk(), count: chunkCount)
         let maxTerm = query.terms.map(\.count).max() ?? 0
         chunks.withUnsafeMutableBufferPointer { buffer in
-            // Each iteration writes only its own slot.
             nonisolated(unsafe) let results = buffer
             DispatchQueue.concurrentPerform(iterations: chunkCount) { chunk in
                 var scratch = [Int](repeating: 0, count: maxTerm)
@@ -178,7 +172,6 @@ public enum FuzzyMatcher {
         }
     }
 
-    /// One core's share of a search: its matches and its best `limit` of them, best first.
     private struct Chunk {
         var matched: [Int] = []
         var top: [Scored] = []
@@ -197,13 +190,11 @@ public enum FuzzyMatcher {
         }
     }
 
-    /// Scores every term without allocating; `positions` receives each term's matched offsets when given.
     private static func score(
         _ query: Query, _ candidate: Candidate, skip: Int, scratch: inout [Int], positions: (([Int]) -> Void)?
     ) -> Int? {
         var total = 0
         for term in query.terms {
-            // A term that fits inside the filename beats one spread over the directories.
             if candidate.nameStart > skip, align(term, candidate.chars, from: candidate.nameStart, into: &scratch) {
                 total += score(scratch, term.count, candidate.chars) + filenameBonus
             } else if align(term, candidate.chars, from: skip, into: &scratch) {
@@ -217,8 +208,6 @@ public enum FuzzyMatcher {
         return total
     }
 
-    /// fzf's v1 alignment: scan forward to the first place the term ends, then back to the latest start before it,
-    /// which gives the shortest window ending there. Writes the positions into `positions[0..<term.count]`.
     private static func align(_ term: [UInt16], _ chars: [UInt16], from start: Int, into positions: inout [Int]) -> Bool {
         guard !term.isEmpty, start < chars.count else { return false }
         var j = 0
@@ -250,7 +239,6 @@ public enum FuzzyMatcher {
         for position in positions[0..<count] {
             let bonus = self.bonus(at: position, chars)
             if position == previous + 1 {
-                // A run keeps the bonus of the word start it began on, like fzf.
                 runBonus = max(runBonus, bonus)
                 score += matchScore + max(bonus, runBonus, consecutiveBonus)
             } else {
@@ -277,6 +265,5 @@ public enum FuzzyMatcher {
     private static func isUpper(_ c: UInt16) -> Bool { c >= 65 && c <= 90 }
     private static func isLower(_ c: UInt16) -> Bool { c >= 97 && c <= 122 }
 
-    /// ASCII-only case folding: cheap, and keeps one UTF-16 unit per character so positions stay valid.
     static func fold(_ c: UInt16) -> UInt16 { isUpper(c) ? c + 32 : c }
 }

@@ -30,7 +30,6 @@ public enum DirectoryLoader {
         return entries
     }
 
-    /// One item on its own, e.g. the folder being shown.
     public static func entry(at url: URL) -> FileEntry {
         let inCloud = isInICloud(url)
         return entry(for: url, keys: Set(inCloud ? baseKeys + cloudKeys : baseKeys), inCloud: inCloud)
@@ -62,7 +61,6 @@ public enum DirectoryLoader {
         if inCloud, values?.isUbiquitousItem == true {
             cloud = values?.ubiquitousItemDownloadingStatus == .notDownloaded ? .notDownloaded : .current
         }
-        // A link keeps its own path and hidden flag, but looks like what it points at.
         var target = values
         if values?.isSymbolicLink == true {
             target = (try? url.resolvingSymlinksInPath().resourceValues(forKeys: keys)) ?? values

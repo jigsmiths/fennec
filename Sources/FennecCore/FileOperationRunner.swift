@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// Copies, moves, trashes, renames and creates items. Every change is returned as undo steps.
 public struct FileOperationRunner: Sendable {
@@ -206,64 +207,70 @@ public struct FileOperationRunner: Sendable {
     }
 }
 
-final class ProgressTracker: @unchecked Sendable {
-    private let lock = NSLock()
-    private var progress: OperationProgress
-    private var itemBaseBytes: Int64 = 0
-    private var itemBytes: Int64 = 0
-    private var itemBaseFiles = 0
-    private var itemFiles = 0
-    private var finishedFileBytes: Int64 = 0
+final class ProgressTracker: Sendable {
+    private struct State {
+        var progress: OperationProgress
+        var itemBaseBytes: Int64 = 0
+        var itemBytes: Int64 = 0
+        var itemBaseFiles = 0
+        var itemFiles = 0
+        var finishedFileBytes: Int64 = 0
+    }
+
+    private let state: Mutex<State>
     private let report: @Sendable (OperationProgress) -> Void
 
     init(totalBytes: Int64, totalItems: Int, report: @escaping @Sendable (OperationProgress) -> Void) {
-        progress = OperationProgress(
-            completedBytes: 0, totalBytes: totalBytes, completedItems: 0, totalItems: totalItems, currentName: "")
+        state = Mutex(State(progress: OperationProgress(
+            completedBytes: 0, totalBytes: totalBytes, completedItems: 0, totalItems: totalItems, currentName: "")))
         self.report = report
     }
 
     func startItem(name: String, bytes: Int64, files: Int) {
         update {
-            itemBaseBytes = progress.completedBytes
-            itemBaseFiles = progress.completedItems
-            itemBytes = bytes
-            itemFiles = files
-            finishedFileBytes = 0
-            progress.currentName = name
+            $0.itemBaseBytes = $0.progress.completedBytes
+            $0.itemBaseFiles = $0.progress.completedItems
+            $0.itemBytes = bytes
+            $0.itemFiles = files
+            $0.finishedFileBytes = 0
+            $0.progress.currentName = name
         }
     }
 
     func fileProgress(_ copied: Int64) {
-        update { progress.completedBytes = min(itemBaseBytes + finishedFileBytes + copied, itemBaseBytes + itemBytes) }
+        update {
+            $0.progress.completedBytes = min(
+                $0.itemBaseBytes + $0.finishedFileBytes + copied, $0.itemBaseBytes + $0.itemBytes)
+        }
     }
 
     func fileFinished(size: Int64) {
         update {
-            finishedFileBytes += size
-            progress.completedBytes = min(itemBaseBytes + finishedFileBytes, itemBaseBytes + itemBytes)
-            progress.completedItems = min(progress.completedItems + 1, itemBaseFiles + itemFiles)
+            $0.finishedFileBytes += size
+            $0.progress.completedBytes = min($0.itemBaseBytes + $0.finishedFileBytes, $0.itemBaseBytes + $0.itemBytes)
+            $0.progress.completedItems = min($0.progress.completedItems + 1, $0.itemBaseFiles + $0.itemFiles)
         }
     }
 
     /// Clones and skipped items never report per-file progress, so line the totals up per item.
     func finishItem() {
         update {
-            progress.completedBytes = itemBaseBytes + itemBytes
-            progress.completedItems = itemBaseFiles + itemFiles
+            $0.progress.completedBytes = $0.itemBaseBytes + $0.itemBytes
+            $0.progress.completedItems = $0.itemBaseFiles + $0.itemFiles
         }
     }
 
     func finishAll() {
         update {
-            progress.completedBytes = progress.totalBytes
-            progress.completedItems = progress.totalItems
+            $0.progress.completedBytes = $0.progress.totalBytes
+            $0.progress.completedItems = $0.progress.totalItems
         }
     }
 
-    private func update(_ change: () -> Void) {
-        let snapshot = lock.withLock {
-            change()
-            return progress
+    private func update(_ change: (inout State) -> Void) {
+        let snapshot = state.withLock {
+            change(&$0)
+            return $0.progress
         }
         report(snapshot)
     }

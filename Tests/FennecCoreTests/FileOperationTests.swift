@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import FennecCore
 
@@ -14,12 +15,11 @@ private func makeRunner(_ root: TempDir) throws -> FileOperationRunner {
     })
 }
 
-private final class Counter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var count = 0
+private final class Counter: Sendable {
+    private let count = Atomic(0)
 
-    func increment() { lock.withLock { count += 1 } }
-    var value: Int { lock.withLock { count } }
+    func increment() { count.wrappingAdd(1, ordering: .relaxed) }
+    var value: Int { count.load(ordering: .relaxed) }
 }
 
 private func write(_ text: String, to url: URL) throws {
@@ -345,16 +345,14 @@ struct DropRuleTests {
     }
 }
 
-final class CallCounter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var count = 0
-    func increment() { lock.withLock { count += 1 } }
-    var value: Int { lock.withLock { count } }
+final class CallCounter: Sendable {
+    private let count = Atomic(0)
+    func increment() { count.wrappingAdd(1, ordering: .relaxed) }
+    var value: Int { count.load(ordering: .relaxed) }
 }
 
-final class LastProgress: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored: OperationProgress?
-    func set(_ progress: OperationProgress) { lock.withLock { stored = progress } }
-    var value: OperationProgress? { lock.withLock { stored } }
+final class LastProgress: Sendable {
+    private let stored = Mutex<OperationProgress?>(nil)
+    func set(_ progress: OperationProgress) { stored.withLock { $0 = progress } }
+    var value: OperationProgress? { stored.withLock { $0 } }
 }

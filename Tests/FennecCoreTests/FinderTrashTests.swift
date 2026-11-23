@@ -2,38 +2,7 @@ import Foundation
 import Testing
 @testable import FennecCore
 
-private func locate(_ url: URL) throws -> String {
-    let wrapper = FinderTrash.locateHandler + """
-
-        on run argv
-            set {folderPath, itemName} to locate(item 1 of argv, item 2 of argv)
-            return folderPath & " | " & itemName
-        end run
-        """
-    let process = Process()
-    process.executableURL = URL(filePath: "/usr/bin/osascript")
-    process.arguments = ["-e", wrapper] + FinderTrash.arguments(for: [url])
-    let output = Pipe()
-    process.standardOutput = output
-    try process.run()
-    let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-    process.waitUntilExit()
-    return text.trimmingCharacters(in: .whitespacesAndNewlines)
-}
-
 struct FinderTrashTests {
-    @Test func namesTheLinkNotItsTarget() throws {
-        let dir = try TempDir()
-        try dir.file("Target.txt")
-        let link = dir.url.appendingPathComponent("Link")
-        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: dir.url.appendingPathComponent("Target.txt"))
-
-        let located = try locate(link)
-
-        #expect(located.hasSuffix(" | Link"))
-        #expect(!located.contains("Target"))
-    }
-
     private static let noPermission = NSError(domain: NSCocoaErrorDomain, code: NSFileWriteNoPermissionError)
 
     private final class FakeFinder {

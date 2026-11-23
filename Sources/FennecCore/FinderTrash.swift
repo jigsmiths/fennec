@@ -18,18 +18,12 @@ public enum FinderTrash {
         }
     }
 
-    static let locateHandler = """
-        on locate(folderPath, itemName)
-            return {(POSIX file folderPath) as text, itemName}
-        end locate
-        """
-
-    private static let script = locateHandler + """
-
+    private static let script = """
         on run argv
             set trashed to {}
             repeat with i from 1 to (count argv) by 2
-                set {folderPath, itemName} to locate(item i of argv, item (i + 1) of argv)
+                set folderPath to (POSIX file (item i of argv)) as text
+                set itemName to item (i + 1) of argv
                 tell application "Finder" to set t to delete item itemName of folder folderPath
                 set end of trashed to POSIX path of (t as alias)
             end repeat

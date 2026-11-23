@@ -22,7 +22,7 @@ final class FinderIndex {
     private var refreshScheduled = false
     private var folders: Set<String> = [""]
     private var watcher: TreeWatcher?
-    private var scopeCache: (folder: String, version: Int, scanned: Int, indices: [Int])?
+    private var scopeCache: (folder: String, version: Int, candidateCount: Int, indices: [Int])?
 
     init(root: URL, includeHidden: Bool) {
         self.root = root
@@ -63,9 +63,10 @@ final class FinderIndex {
         guard !folder.isEmpty else { return nil }
         var indices: [Int] = []
         var start = 0
-        if let cache = scopeCache, cache.folder == folder, cache.version == version, cache.scanned <= candidates.count {
+        if let cache = scopeCache, cache.folder == folder, cache.version == version,
+           cache.candidateCount <= candidates.count {
             indices = cache.indices
-            start = cache.scanned
+            start = cache.candidateCount
         }
         let prefix = folder + "/"
         for index in start..<candidates.count where candidates[index].text.hasPrefix(prefix) {

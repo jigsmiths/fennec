@@ -56,24 +56,24 @@ public enum DirectoryLoader {
     }
 
     static func entry(for url: URL, name: String? = nil, keys: Set<URLResourceKey>, inCloud: Bool) -> FileEntry {
-        let values = try? url.resourceValues(forKeys: keys)
+        let linkValues = try? url.resourceValues(forKeys: keys)
         var cloud = CloudStatus.none
-        if inCloud, values?.isUbiquitousItem == true {
-            cloud = values?.ubiquitousItemDownloadingStatus == .notDownloaded ? .notDownloaded : .current
+        if inCloud, linkValues?.isUbiquitousItem == true {
+            cloud = linkValues?.ubiquitousItemDownloadingStatus == .notDownloaded ? .notDownloaded : .current
         }
-        var target = values
-        if values?.isSymbolicLink == true {
-            target = (try? url.resolvingSymlinksInPath().resourceValues(forKeys: keys)) ?? values
+        var pointeeValues = linkValues
+        if linkValues?.isSymbolicLink == true {
+            pointeeValues = (try? url.resolvingSymlinksInPath().resourceValues(forKeys: keys)) ?? linkValues
         }
         return FileEntry(
             url: url,
             name: name,
-            isDirectory: target?.isDirectory ?? false,
-            isPackage: target?.isPackage ?? false,
-            isHidden: values?.isHidden ?? false,
-            size: target?.fileSize.map(Int64.init),
-            modified: target?.contentModificationDate,
-            typeIdentifier: target?.contentType?.identifier,
+            isDirectory: pointeeValues?.isDirectory ?? false,
+            isPackage: pointeeValues?.isPackage ?? false,
+            isHidden: linkValues?.isHidden ?? false,
+            size: pointeeValues?.fileSize.map(Int64.init),
+            modified: pointeeValues?.contentModificationDate,
+            typeIdentifier: pointeeValues?.contentType?.identifier,
             cloudStatus: cloud
         )
     }

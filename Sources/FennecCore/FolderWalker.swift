@@ -76,13 +76,14 @@ public enum FolderWalker {
             var totals = Totals(newest: modified)
             var folders: [BulkReader.Entry] = []
             let outcome = reader.list(path) { entry in
+                let details = entry.details ?? .init()
                 if entry.isDirectory {
-                    if !entry.isMountPoint { folders.append(entry) }
+                    if !details.isMountPoint { folders.append(entry) }
                 } else {
                     totals.files += 1
-                    totals.bytes += entry.size
-                    totals.allocated += entry.allocated
-                    totals.newest = max(totals.newest, entry.modified)
+                    totals.bytes += details.size
+                    totals.allocated += details.allocated
+                    totals.newest = max(totals.newest, details.modified)
                 }
                 return true
             }
@@ -101,11 +102,11 @@ public enum FolderWalker {
                     childRecord = walk.folders.count
                     walk.folders.append(.init(parent: record, name: folder.name, stats: FolderStats(calculated: now)))
                 }
-                let isPackage = FileIndexer.isPackageName(folder.name, cache: &packageExtensions)
+                let isPackage = FileIndexer.hasPackageExtension(folder.name, cache: &packageExtensions)
                 let childPath = path == "/" ? "/" + folder.name : path + "/" + folder.name
                 guard let inner = visit(
                     childPath, record: childRecord, recordInside: childRecord != nil && !isPackage,
-                    modified: folder.modified)
+                    modified: folder.details?.modified ?? 0)
                 else { return nil }
                 totals.subfolders += 1
                 totals.add(inner)
@@ -126,7 +127,7 @@ public enum FolderWalker {
         let rootModified = (try? root.resourceValues(forKeys: [.contentModificationDateKey]))?
             .contentModificationDate.map { Int64($0.timeIntervalSince1970) } ?? 0
         walk.folders.append(.init(parent: -1, name: root.lastPathComponent, stats: FolderStats(calculated: now)))
-        let rootIsPackage = FileIndexer.isPackageName(root.lastPathComponent, cache: &packageExtensions)
+        let rootIsPackage = FileIndexer.hasPackageExtension(root.lastPathComponent, cache: &packageExtensions)
         guard visit(rootPath, record: 0, recordInside: !rootIsPackage, modified: rootModified) != nil
         else { return nil }
         return walk

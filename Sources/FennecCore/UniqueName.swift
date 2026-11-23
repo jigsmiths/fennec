@@ -4,7 +4,7 @@ import Foundation
 public enum UniqueName {
     public static func available(for name: String, in directory: URL) -> URL {
         let first = directory.appendingPathComponent(name)
-        if !FileItem.exists(first) { return first }
+        if !FileItem.existsWithoutFollowingLinks(first) { return first }
 
         let ext = (name as NSString).pathExtension
         var base = ext.isEmpty ? name : (name as NSString).deletingPathExtension
@@ -16,14 +16,14 @@ public enum UniqueName {
         }
         while true {
             let candidate = directory.appendingPathComponent(ext.isEmpty ? "\(base) \(number)" : "\(base) \(number).\(ext)")
-            if !FileItem.exists(candidate) { return candidate }
+            if !FileItem.existsWithoutFollowingLinks(candidate) { return candidate }
             number += 1
         }
     }
 }
 
 enum FileItem {
-    static func exists(_ url: URL) -> Bool {
+    static func existsWithoutFollowingLinks(_ url: URL) -> Bool {
         (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil
     }
 

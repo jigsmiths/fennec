@@ -2,13 +2,18 @@ import Darwin
 
 final class BulkReader {
     struct Entry {
+        struct Details {
+            var modified: Int64 = 0
+            var isMountPoint = false
+            var size: Int64 = 0
+            var allocated: Int64 = 0
+        }
+
         let name: String
         let isDirectory: Bool
         let isHidden: Bool
-        var modified: Int64 = 0
-        var isMountPoint = false
-        var size: Int64 = 0
-        var allocated: Int64 = 0
+        /// Nil unless the reader was created with `details`.
+        let details: Details?
     }
 
     enum Outcome { case finished, stopped, failed }
@@ -70,24 +75,22 @@ final class BulkReader {
         field += MemoryLayout<UInt32>.size
 
         let isDirectory = type == fsobj_type_t(VDIR.rawValue)
-        var entry = Entry(
-            name: name, isDirectory: isDirectory,
-            isHidden: name.hasPrefix(".") || flags & UInt32(UF_HIDDEN) != 0)
-        guard details else { return entry }
+        let isHidden = name.hasPrefix(".") || flags & UInt32(UF_HIDDEN) != 0
+        guard details else { return Entry(name: name, isDirectory: isDirectory, isHidden: isHidden, details: nil) }
 
-        entry.modified = modified
+        var entryDetails = Entry.Details(modified: modified)
         if returned.dirattr & attrgroup_t(ATTR_DIR_MOUNTSTATUS) != 0 {
             let mountStatus = field.loadUnaligned(as: UInt32.self)
             field += MemoryLayout<UInt32>.size
-            entry.isMountPoint = isDirectory && mountStatus & UInt32(DIR_MNTSTATUS_MNTPOINT) != 0
+            entryDetails.isMountPoint = isDirectory && mountStatus & UInt32(DIR_MNTSTATUS_MNTPOINT) != 0
         }
         if returned.fileattr & attrgroup_t(ATTR_FILE_TOTALSIZE) != 0 {
-            entry.size = Int64(field.loadUnaligned(as: off_t.self))
+            entryDetails.size = Int64(field.loadUnaligned(as: off_t.self))
             field += MemoryLayout<off_t>.size
         }
         if returned.fileattr & attrgroup_t(ATTR_FILE_ALLOCSIZE) != 0 {
-            entry.allocated = Int64(field.loadUnaligned(as: off_t.self))
+            entryDetails.allocated = Int64(field.loadUnaligned(as: off_t.self))
         }
-        return entry
+        return Entry(name: name, isDirectory: isDirectory, isHidden: isHidden, details: entryDetails)
     }
 }

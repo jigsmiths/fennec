@@ -1,23 +1,23 @@
 import AppKit
 import FennecCore
+import Synchronization
 
 @MainActor
 final class OperationsController {
-    final class Job: @unchecked Sendable, Identifiable {
+    final class Job: Sendable, Identifiable {
         let id = UUID()
         let title: String
-        private let lock = NSLock()
-        private var latest: OperationProgress?
-        private var cancelled = false
+        private let latest = Mutex<OperationProgress?>(nil)
+        private let cancelled = Atomic(false)
 
         init(title: String) {
             self.title = title
         }
 
-        var progress: OperationProgress? { lock.withLock { latest } }
-        var isCancelled: Bool { lock.withLock { cancelled } }
-        func update(_ progress: OperationProgress) { lock.withLock { latest = progress } }
-        func cancel() { lock.withLock { cancelled = true } }
+        var progress: OperationProgress? { latest.withLock { $0 } }
+        var isCancelled: Bool { cancelled.load(ordering: .acquiring) }
+        func update(_ progress: OperationProgress) { latest.withLock { $0 = progress } }
+        func cancel() { cancelled.store(true, ordering: .releasing) }
     }
 
     var onJobsChanged: (() -> Void)?

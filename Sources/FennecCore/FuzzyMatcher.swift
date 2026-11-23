@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// fzf-style fuzzy matching: the query's characters must appear in order, and matches that are consecutive or
 /// start a word score higher. Works on UTF-16 so positions line up with NSString ranges for highlighting.
@@ -125,24 +126,22 @@ public enum FuzzyMatcher {
         }
 
         let chunkCount = max(1, (scan.count + chunkSize - 1) / chunkSize)
-        var chunks = [Chunk](repeating: Chunk(), count: chunkCount)
+        let results = Mutex([Chunk](repeating: Chunk(), count: chunkCount))
         let maxTerm = query.terms.map(\.count).max() ?? 0
-        chunks.withUnsafeMutableBufferPointer { buffer in
-            nonisolated(unsafe) let results = buffer
-            DispatchQueue.concurrentPerform(iterations: chunkCount) { chunk in
-                var scratch = [Int](repeating: 0, count: maxTerm)
-                var result = Chunk()
-                let start = chunk * chunkSize
-                for index in scan[start..<min(start + chunkSize, scan.count)] {
-                    let candidate = candidates[index]
-                    guard let score = score(query, candidate, skip: skip, scratch: &scratch, positions: nil)
-                    else { continue }
-                    result.matched.append(index)
-                    result.offer(Scored(score: score, length: candidate.chars.count, index: index), limit: limit)
-                }
-                results[chunk] = result
+        DispatchQueue.concurrentPerform(iterations: chunkCount) { chunk in
+            var scratch = [Int](repeating: 0, count: maxTerm)
+            var result = Chunk()
+            let start = chunk * chunkSize
+            for index in scan[start..<min(start + chunkSize, scan.count)] {
+                let candidate = candidates[index]
+                guard let score = score(query, candidate, skip: skip, scratch: &scratch, positions: nil)
+                else { continue }
+                result.matched.append(index)
+                result.offer(Scored(score: score, length: candidate.chars.count, index: index), limit: limit)
             }
+            results.withLock { $0[chunk] = result }
         }
+        let chunks = results.withLock { $0 }
 
         var matched: [Int] = []
         matched.reserveCapacity(chunks.reduce(0) { $0 + $1.matched.count })

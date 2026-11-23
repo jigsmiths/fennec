@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import UniformTypeIdentifiers
 
 public enum FileFormatting {
@@ -22,7 +23,8 @@ public enum FileFormatting {
             "\(bytes(stats.allocated)) on disk",
         ]
         if stats.incomplete { lines.append("Some folders inside couldn't be read") }
-        lines.append("Calculated \(relativeFormatter.localizedString(for: stats.calculated, relativeTo: now))")
+        let calculated = relativeFormatter.withLock { $0.localizedString(for: stats.calculated, relativeTo: now) }
+        lines.append("Calculated \(calculated)")
         return lines.joined(separator: "\n")
     }
 
@@ -30,16 +32,16 @@ public enum FileFormatting {
         "\(value.formatted()) \(noun)\(value == 1 ? "" : "s")"
     }
 
-    nonisolated(unsafe) private static let relativeFormatter = RelativeDateTimeFormatter()
+    private static let relativeFormatter = Mutex(RelativeDateTimeFormatter())
 
     public static func bytes(_ count: Int64) -> String {
-        sizeFormatter.string(fromByteCount: count)
+        sizeFormatter.withLock { $0.string(fromByteCount: count) }
     }
 
-    nonisolated(unsafe) private static let sizeFormatter: ByteCountFormatter = {
+    private static let sizeFormatter: Mutex<ByteCountFormatter> = {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         formatter.allowsNonnumericFormatting = false
-        return formatter
+        return Mutex(formatter)
     }()
 }

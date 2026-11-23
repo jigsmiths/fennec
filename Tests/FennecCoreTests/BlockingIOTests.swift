@@ -1,13 +1,13 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import FennecCore
 
-private final class Counter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var count = 0
+private final class Counter: Sendable {
+    private let count = Atomic(0)
 
-    func increment() { lock.withLock { count += 1 } }
-    var value: Int { lock.withLock { count } }
+    func increment() { count.wrappingAdd(1, ordering: .relaxed) }
+    var value: Int { count.load(ordering: .relaxed) }
 }
 
 struct BlockingIOTests {

@@ -1,9 +1,9 @@
 import Foundation
+import Synchronization
 
-final class CancelFlag: @unchecked Sendable {
-    private let lock = NSLock()
-    private var cancelled = false
+final class CancelFlag: Sendable {
+    private let cancelled = Atomic(false)
 
-    func set() { lock.withLock { cancelled = true } }
-    @Sendable func get() -> Bool { lock.withLock { cancelled } }
+    func set() { cancelled.store(true, ordering: .releasing) }
+    @Sendable func get() -> Bool { cancelled.load(ordering: .acquiring) }
 }

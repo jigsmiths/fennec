@@ -56,8 +56,7 @@ final class FinderIndex {
         if hasWalked {
             return folders.contains(relative) && !reachedLimit ? relative : nil
         }
-        let components = relative.split(separator: "/")
-        return components.contains { $0.hasPrefix(".") || $0 == "node_modules" } ? nil : relative
+        return FileIndexer.listsFolder(relative, includeHidden: includeHidden) ? relative : nil
     }
 
     func scope(forRelativePath folder: String) -> FuzzyMatcher.Scope? {

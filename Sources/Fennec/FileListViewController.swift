@@ -6,10 +6,11 @@ final class FileTableView: NSTableView {
     var onQuickLook: (() -> Void)?
     var onSwitchPane: (() -> Void)?
     var onFocus: (() -> Void)?
-    var onMenu: ((Int) -> NSMenu?)?
+    var onMenu: ((Int?) -> NSMenu?)?
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        onMenu?(row(at: convert(event.locationInWindow, from: nil)))
+        let row = row(at: convert(event.locationInWindow, from: nil))
+        return onMenu?(row >= 0 ? row : nil)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -31,18 +32,18 @@ func handleFolderKey(
 ) -> Bool {
     guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.function, .numericPad]).isEmpty
     else { return false }
-    switch event.keyCode {
-    case 36, 76:
+    switch FolderKey(keyCode: event.keyCode) {
+    case .rename:
         onRename?()
         return true
-    case 49:
+    case .quickLook:
         onQuickLook?()
         return true
-    case 48:
+    case .switchPane:
         guard let onSwitchPane else { return false }
         onSwitchPane()
         return true
-    default:
+    case nil:
         return false
     }
 }
@@ -149,6 +150,10 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         for (column, width) in fitted where column.width < width { column.width = width }
     }
 
+    /// Widest sizes per unit, so the Size column doesn't resize as sizes change within a unit.
+    private static let sizeSamples: [Int64] = [999, 999_000, 999_500_000, 999_500_000_000]
+    private static let sortIndicatorWidth: CGFloat = 16
+
     private func fittedWidth(of index: Int) -> CGFloat {
         let column = tableView.tableColumns[index]
         guard let key = SortKey(rawValue: column.identifier.rawValue) else { return column.width }
@@ -162,7 +167,7 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
             font = FileNameCell.font
         case .size:
             texts = rows.contains { $0.displaySize != nil }
-                ? Set([999, 999_000, 999_500_000, 999_500_000_000].map(FileFormatting.bytes)) : []
+                ? Set(Self.sizeSamples.map(FileFormatting.bytes)) : []
         case .modified:
             var byMinute: [Int: Date] = [:]
             for row in rows { if let date = row.modified { byMinute[Int(date.timeIntervalSince1970 / 60)] = date } }
@@ -172,7 +177,7 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         }
         let attributes: [NSAttributedString.Key: Any] = [.font: font]
         let widest = texts.map { ($0 as NSString).size(withAttributes: attributes).width }.max() ?? 0
-        let header = column.headerCell.cellSize.width + 16
+        let header = column.headerCell.cellSize.width + Self.sortIndicatorWidth
         return max(ceil(widest) + padding, header, column.minWidth)
     }
 
@@ -204,12 +209,14 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
         return view.convert(tableView.rect(ofRow: index), from: tableView)
     }
 
-    private func contextMenu(at row: Int) -> NSMenu? {
+    private func contextMenu(at row: Int?) -> NSMenu? {
         focus()
-        if row < 0 {
+        if let row {
+            if !tableView.selectedRowIndexes.contains(row) {
+                tableView.selectRowIndexes([row], byExtendingSelection: false)
+            }
+        } else {
             tableView.deselectAll(nil)
-        } else if !tableView.selectedRowIndexes.contains(row) {
-            tableView.selectRowIndexes([row], byExtendingSelection: false)
         }
         return onContextMenu?()
     }
@@ -291,7 +298,13 @@ final class FileListViewController: NSViewController, FolderContentView, NSTable
 final class FileNameCell: NSTableCellView {
     static let reuseID = NSUserInterfaceItemIdentifier("name")
     static let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-    static let padding: CGFloat = 2 + 18 + 6 + 4 + 16 + 4
+    private static let leadingInset: CGFloat = 2
+    private static let iconSize: CGFloat = 18
+    private static let iconGap: CGFloat = 6
+    private static let badgeGap: CGFloat = 4
+    private static let badgeWidth: CGFloat = 16
+    private static let trailingInset: CGFloat = 4
+    static let padding = leadingInset + iconSize + iconGap + badgeGap + badgeWidth + trailingInset
 
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
@@ -314,14 +327,14 @@ final class FileNameCell: NSTableCellView {
             addSubview(view)
         }
         NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.leadingInset),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 18),
-            icon.heightAnchor.constraint(equalToConstant: 18),
-            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
+            icon.widthAnchor.constraint(equalToConstant: Self.iconSize),
+            icon.heightAnchor.constraint(equalToConstant: Self.iconSize),
+            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: Self.iconGap),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            cloudBadge.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 4),
-            cloudBadge.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
+            cloudBadge.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: Self.badgeGap),
+            cloudBadge.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -Self.trailingInset),
             cloudBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
@@ -340,7 +353,10 @@ final class FileNameCell: NSTableCellView {
 final class TextCell: NSTableCellView {
     static let reuseID = NSUserInterfaceItemIdentifier("text")
     static let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize + 1, weight: .regular)
-    static let padding: CGFloat = 2 + 4 + 8
+    private static let leadingInset: CGFloat = 2
+    private static let trailingInset: CGFloat = 4
+    private static let slack: CGFloat = 8
+    static let padding = leadingInset + trailingInset + slack
 
     private let label = NSTextField(labelWithString: "")
 
@@ -354,8 +370,8 @@ final class TextCell: NSTableCellView {
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.leadingInset),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.trailingInset),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }

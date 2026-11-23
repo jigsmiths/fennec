@@ -7,6 +7,10 @@ final class FolderStatsService {
     static let didUpdate = Notification.Name("FolderStatsService.didUpdate")
     static let activityDidChange = Notification.Name("FolderStatsService.activityDidChange")
 
+    static func walkedFolder(from notification: Notification) -> URL? {
+        notification.object as? URL
+    }
+
     struct Scan {
         let url: URL
         let started: ContinuousClock.Instant
@@ -18,7 +22,8 @@ final class FolderStatsService {
 
     private struct Request {
         let url: URL
-        let force: Bool
+        let ignoresCache: Bool
+        let walksNetworkVolumes: Bool
         var path: String { url.standardizedFileURL.path }
     }
 
@@ -34,7 +39,7 @@ final class FolderStatsService {
     var queued: [URL] { queue.map(\.url) }
 
     private init() {
-        store = try? FolderStatsStore()
+        store = Bench.enabled ? nil : try? FolderStatsStore()
     }
 
     func childStats(of folder: URL) async -> [String: FolderStats] {
@@ -42,11 +47,11 @@ final class FolderStatsService {
     }
 
     func request(_ folders: [URL]) {
-        enqueue(folders, force: false)
+        enqueue(folders, ignoresCache: false, walksNetworkVolumes: false)
     }
 
     func recalculate(_ folders: [URL]) {
-        enqueue(folders, force: true)
+        enqueue(folders, ignoresCache: true, walksNetworkVolumes: true)
     }
 
     func cancel(_ folder: URL) {
@@ -56,14 +61,20 @@ final class FolderStatsService {
         postActivity()
     }
 
-    private func enqueue(_ folders: [URL], force: Bool) {
+    private func enqueue(_ folders: [URL], ignoresCache: Bool, walksNetworkVolumes: Bool) {
         guard store != nil, !folders.isEmpty else { return }
-        let requests = folders.map { Request(url: $0, force: force) }
+        let requests = folders.map {
+            Request(url: $0, ignoresCache: ignoresCache, walksNetworkVolumes: walksNetworkVolumes)
+        }
         let paths = Set(requests.map(\.path))
-        let alreadyForced = Set(queue.filter { $0.force && paths.contains($0.path) }.map(\.path))
+        let replaced = queue.filter { paths.contains($0.path) }
+        let alreadyIgnoringCache = Set(replaced.filter(\.ignoresCache).map(\.path))
+        let alreadyWalkingNetwork = Set(replaced.filter(\.walksNetworkVolumes).map(\.path))
         queue.removeAll { paths.contains($0.path) }
         queue.insert(contentsOf: requests.map {
-            Request(url: $0.url, force: $0.force || alreadyForced.contains($0.path))
+            Request(url: $0.url,
+                    ignoresCache: $0.ignoresCache || alreadyIgnoringCache.contains($0.path),
+                    walksNetworkVolumes: $0.walksNetworkVolumes || alreadyWalkingNetwork.contains($0.path))
         }, at: 0)
 
         if let running = currentRequest, let scan = current, !paths.contains(running.path),
@@ -88,7 +99,7 @@ final class FolderStatsService {
 
     private func process(_ request: Request, _ store: FolderStatsStore) async {
         let cached = try? await store.stats(for: request.url)
-        if !request.force, cached != nil { return }
+        if !request.ignoresCache, cached != nil { return }
 
         let flag = CancelFlag()
         currentRequest = request
@@ -97,10 +108,11 @@ final class FolderStatsService {
         postActivity()
 
         let url = request.url
-        let force = request.force
+        let walksNetworkVolumes = request.walksNetworkVolumes
         let walk = await withCheckedContinuation { continuation in
             Self.walkQueue.async {
-                continuation.resume(returning: Self.walk(url, force: force, isCancelled: flag.get) { progress in
+                continuation.resume(returning: Self.walk(
+                    url, walksNetworkVolumes: walksNetworkVolumes, isCancelled: flag.get) { progress in
                     Task { @MainActor in self.update(progress, of: flag) }
                 })
             }
@@ -126,9 +138,12 @@ final class FolderStatsService {
     }
 
     nonisolated private static func walk(
-        _ url: URL, force: Bool, isCancelled: () -> Bool, progress: @escaping @Sendable (FolderWalker.Progress) -> Void
+        _ url: URL, walksNetworkVolumes: Bool, isCancelled: () -> Bool,
+        progress: @escaping @Sendable (FolderWalker.Progress) -> Void
     ) -> FolderWalk? {
-        if !force, (try? url.resourceValues(forKeys: [.volumeIsLocalKey]))?.volumeIsLocal == false { return nil }
+        if !walksNetworkVolumes, (try? url.resourceValues(forKeys: [.volumeIsLocalKey]))?.volumeIsLocal == false {
+            return nil
+        }
         return FolderWalker.walk(url, isCancelled: isCancelled, progress: progress)
     }
 }

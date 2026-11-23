@@ -128,9 +128,10 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
         PinnedFolders.update { $0.remove(url.path) }
     }
 
+    private var favoritesHeaderRows: Int { favorites.isEmpty ? 0 : 1 }
+
     private var favoriteGaps: ClosedRange<Int> {
-        let first = favorites.isEmpty ? 0 : 1
-        return first...(first + favorites.count)
+        favoritesHeaderRows...(favoritesHeaderRows + favorites.count)
     }
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {

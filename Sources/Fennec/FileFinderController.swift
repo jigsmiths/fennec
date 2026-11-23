@@ -23,7 +23,7 @@ final class FileFinderController: NSObject {
     private var results: [(item: FileIndexer.Item, match: FuzzyMatcher.Match)] = []
     private var matchCount = 0
     private var searchState: FuzzyMatcher.SearchState?
-    private var searchStateVersion = -1
+    private var searchStateIndexGeneration = -1
     private var searchGeneration = 0
     private var lastSearch = ContinuousClock.now
     private var isClosed = false
@@ -76,10 +76,10 @@ final class FileFinderController: NSObject {
         let generation = searchGeneration
         lastSearch = .now
         let query = FuzzyMatcher.Query(field.stringValue)
-        let items = index.items, candidates = index.candidates, version = index.version
+        let items = index.items, candidates = index.candidates, indexGeneration = index.generation
         let scope = index.scope(forRelativePath: folder)
         scopeCount = scope?.indices.count ?? candidates.count
-        let previous = searchStateVersion == version ? searchState : nil
+        let previous = searchStateIndexGeneration == indexGeneration ? searchState : nil
         let limit = Self.resultLimit
         updateStatus()
         Task { [weak self] in
@@ -88,7 +88,7 @@ final class FileFinderController: NSObject {
             }.value
             guard let self, generation == self.searchGeneration else { return }
             self.searchState = result.state
-            self.searchStateVersion = version
+            self.searchStateIndexGeneration = indexGeneration
             self.matchCount = result.matchCount
             self.show(result.top.map { (items[$0.index], $0.match) })
         }
@@ -305,7 +305,7 @@ final class FinderPanel: NSPanel {
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if flags == .command, event.keyCode == 36 || event.keyCode == 76 {
+        if flags == .command, event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.enter {
             onCommandReturn?()
             return true
         }

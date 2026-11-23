@@ -10,7 +10,7 @@ final class FinderIndex {
     let includeHidden: Bool
     private(set) var items: [FileIndexer.Item] = []
     private(set) var candidates: [FuzzyMatcher.Candidate] = []
-    private(set) var version = 0
+    private(set) var generation = 0
     private(set) var isWalking = false
     private(set) var hasWalked = false
 
@@ -22,7 +22,7 @@ final class FinderIndex {
     private var refreshScheduled = false
     private var folders: Set<String> = [""]
     private var watcher: TreeWatcher?
-    private var scopeCache: (folder: String, version: Int, candidateCount: Int, indices: [Int])?
+    private var scopeCache: (folder: String, generation: Int, candidateCount: Int, indices: [Int])?
 
     init(root: URL, includeHidden: Bool) {
         self.root = root
@@ -63,7 +63,7 @@ final class FinderIndex {
         guard !folder.isEmpty else { return nil }
         var indices: [Int] = []
         var start = 0
-        if let cache = scopeCache, cache.folder == folder, cache.version == version,
+        if let cache = scopeCache, cache.folder == folder, cache.generation == generation,
            cache.candidateCount <= candidates.count {
             indices = cache.indices
             start = cache.candidateCount
@@ -72,7 +72,7 @@ final class FinderIndex {
         for index in start..<candidates.count where candidates[index].text.hasPrefix(prefix) {
             indices.append(index)
         }
-        scopeCache = (folder, version, candidates.count, indices)
+        scopeCache = (folder, generation, candidates.count, indices)
         return FuzzyMatcher.Scope(indices: indices, skip: prefix.utf16.count)
     }
 
@@ -122,7 +122,7 @@ final class FinderIndex {
                 self.items = freshItems
                 self.candidates = freshItems.map(\.candidate)
                 self.folders = freshFolders
-                self.version += 1
+                self.generation += 1
             }
             self.isWalking = false
             self.hasWalked = true

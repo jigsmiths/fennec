@@ -60,7 +60,7 @@ final class FolderViewController: NSViewController {
     private var rows: [FileEntry] = []
     private var loadTask: Task<Void, Never>?
     private var loadGeneration = 0
-    private var pendingLoad: Int?
+    private var isLoading = false
     private var pendingRenamePath: String?
     private var openRenames = 0
     private var reloadAfterRename = false
@@ -204,14 +204,14 @@ final class FolderViewController: NSViewController {
         let order = sortOrder
         loadGeneration += 1
         let generation = loadGeneration
-        pendingLoad = generation
+        isLoading = true
         if !keepScroll { showLoadingIfSlow(generation) }
 
         loadTask = Task { [weak self] in
             let result: Result<([FileEntry], [FileEntry]), Error>
             do {
                 let entries = try await BlockingIO.run { try DirectoryLoader.loadSync(url) }
-                let stats = Self.hasFolderStats(url) ? await FolderStatsService.shared.childStats(of: url) : [:]
+                let stats = Self.showsFolderStats(for: url) ? await FolderStatsService.shared.childStats(of: url) : [:]
                 result = .success(try await BlockingIO.run {
                     let measured = stats.isEmpty ? entries : FolderStats.apply(stats, to: entries)
                     return (measured, Sorting.arrange(measured, showHidden: showHidden, order: order))
@@ -220,7 +220,7 @@ final class FolderViewController: NSViewController {
                 result = .failure(error)
             }
             guard let self, !Task.isCancelled, self.loadGeneration == generation else { return }
-            self.pendingLoad = nil
+            self.isLoading = false
             let loaded = ContinuousClock.now
 
             switch result {
@@ -256,7 +256,7 @@ final class FolderViewController: NSViewController {
     private func showLoadingIfSlow(_ generation: Int) {
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(150))
-            guard let self, self.pendingLoad == generation else { return }
+            guard let self, self.isLoading, self.loadGeneration == generation else { return }
             self.rows = []
             self.content.display([], selecting: IndexSet(), keepScroll: false)
             self.onSelectionChange?([])
@@ -291,17 +291,17 @@ final class FolderViewController: NSViewController {
         messageLabel.isHidden = false
     }
 
-    private static func hasFolderStats(_ url: URL) -> Bool {
-        !FinderTrash.isTrash(url) && !Bench.enabled
+    private static func showsFolderStats(for url: URL) -> Bool {
+        !FinderTrash.isTrash(url)
     }
 
     private func requestMissingStats() {
-        guard let directory, Self.hasFolderStats(directory) else { return }
+        guard let directory, Self.showsFolderStats(for: directory) else { return }
         FolderStatsService.shared.request(rows.filter { $0.isDirectory && $0.folderStats == nil }.map(\.url))
     }
 
     @objc private func folderStatsDidUpdate(_ notification: Notification) {
-        guard let walked = (notification.object as? URL)?.standardizedFileURL.path,
+        guard let walked = FolderStatsService.walkedFolder(from: notification)?.standardizedFileURL.path,
               let shown = directory?.standardizedFileURL.path else { return }
         let isAbove = walked == "/" || shown == walked || shown.hasPrefix(walked + "/")
         let isChild = (walked as NSString).deletingLastPathComponent == shown
@@ -314,7 +314,7 @@ final class FolderViewController: NSViewController {
             self.statsRefreshScheduled = false
             guard let directory = self.directory else { return }
             let stats = await FolderStatsService.shared.childStats(of: directory)
-            guard self.directory == directory, self.pendingLoad == nil else { return }
+            guard self.directory == directory, !self.isLoading else { return }
             if self.openRenames > 0 {
                 self.reloadAfterRename = true
                 return

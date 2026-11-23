@@ -6,10 +6,10 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
     static let shared = ShortcutsWindowController()
 
     private static let folderKeys: [(String, String)] = [
-        ("Rename", ShortcutLabel.text(key: "\r", modifiers: [])),
-        ("Quick Look", ShortcutLabel.text(key: " ", modifiers: [])),
+        FolderKey.rename.shortcut,
+        FolderKey.quickLook.shortcut,
         ("Copy instead of move", "⌥ while dragging"),
-        ("Switch pane", ShortcutLabel.text(key: "\t", modifiers: [])),
+        FolderKey.switchPane.shortcut,
         ("Even out the panes", "Double-click the divider"),
     ]
 

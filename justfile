@@ -9,7 +9,13 @@ build:
 testing_plugin := "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib"
 
 test:
-    swift test -Xswiftc -load-plugin-library -Xswiftc {{testing_plugin}}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "$(xcode-select -p)" = /Library/Developer/CommandLineTools ]; then
+        swift test -Xswiftc -load-plugin-library -Xswiftc {{testing_plugin}}
+    else
+        swift test
+    fi
 
 bundle version="": build
     rm -rf {{app}}

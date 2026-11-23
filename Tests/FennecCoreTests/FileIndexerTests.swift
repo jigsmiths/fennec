@@ -149,4 +149,19 @@ import Testing
 
         #expect(sizes == [10, 10, 5])
     }
+
+    @Test(arguments: [false, true])
+    func listsFolderMatchesWhatTheWalkLists(includeHidden: Bool) throws {
+        let dir = try TempDir()
+        for folder in ["src/app", ".config/fish", "web/node_modules/pkg", ".git/objects", "Tool.app/Contents"] {
+            try dir.folder(folder)
+            try dir.file(folder + "/x.txt")
+        }
+        let listed = Set(paths(dir.url, includeHidden: includeHidden))
+
+        for folder in ["src", "src/app", ".config", ".config/fish", "web/node_modules", ".git", "Tool.app/Contents"] {
+            let walkListsInside = listed.contains(folder + "/x.txt") || listed.contains { $0.hasPrefix(folder + "/") }
+            #expect(FileIndexer.listsFolder(folder, includeHidden: includeHidden) == walkListsInside, "\(folder)")
+        }
+    }
 }

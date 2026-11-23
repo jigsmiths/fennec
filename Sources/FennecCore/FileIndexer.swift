@@ -61,6 +61,15 @@ public enum FileIndexer {
         if !batch.isEmpty { onBatch(batch) }
     }
 
+    public static func listsFolder(_ relativePath: String, includeHidden: Bool) -> Bool {
+        var packageExtensions: [String: Bool] = [:]
+        return relativePath.split(separator: "/").allSatisfy { component in
+            let name = String(component)
+            if name.hasPrefix("."), !includeHidden { return false }
+            return !skippedFolders.contains(name) && !isPackageName(name, cache: &packageExtensions)
+        }
+    }
+
     static func isPackageName(_ name: String, cache: inout [String: Bool]) -> Bool {
         let ext = (name as NSString).pathExtension.lowercased()
         guard !ext.isEmpty else { return false }

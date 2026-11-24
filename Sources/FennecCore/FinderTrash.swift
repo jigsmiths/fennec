@@ -74,8 +74,9 @@ public enum FinderTrash {
         output.split(separator: "\n").compactMap { URL(string: String($0)) }.filter(\.isFileURL)
     }
 
+    /// Starts the empty and returns: Finder's reply to a big empty outlasts AppleScript's two-minute limit.
     public static func empty() throws {
-        _ = try runFinder("tell application \"Finder\" to empty trash", arguments: [])
+        _ = try runFinder("ignoring application responses\ntell application \"Finder\" to empty trash\nend ignoring", arguments: [])
     }
 
     /// Finder's scripting can't trash undownloaded iCloud folders or symlinks, so it only gets other items the system refuses.

@@ -173,7 +173,6 @@ final class OperationsController {
             do {
                 try await BlockingIO.run {
                     try FinderTrash.empty()
-                    TrashLedger.shared.prune()
                 }
             } catch {
                 showError(error)

@@ -17,6 +17,9 @@ test:
         swift test
     fi
 
+lint:
+    scripts/lint.sh
+
 bundle version="": build
     rm -rf {{app}}
     mkdir -p {{app}}/Contents/MacOS {{app}}/Contents/Resources

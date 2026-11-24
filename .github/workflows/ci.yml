@@ -16,6 +16,9 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v4
 
+      - name: Lint
+        run: just lint
+
       - name: Build app bundle
         run: just bundle
 

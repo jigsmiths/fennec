@@ -5,13 +5,11 @@ import FennecCore
 final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate {
     static let shared = ShortcutsWindowController()
 
-    private static let folderKeys: [(String, String)] = [
-        FolderKey.rename.shortcut,
-        FolderKey.quickLook.shortcut,
-        ("Copy instead of move", "⌥ while dragging"),
-        FolderKey.switchPane.shortcut,
-        ("Even out the panes", "Double-click the divider"),
-    ]
+    private static let folderKeys: [(String, String)] =
+        FolderKey.allCases.map(\.shortcut) + [
+            ("Copy instead of move", "⌥ while dragging"),
+            ("Even out the panes", "Double-click the divider"),
+        ]
 
     private static let finderKeys: [(String, String)] = [
         ("Show in folder", ShortcutLabel.text(key: "\r", modifiers: [])),
